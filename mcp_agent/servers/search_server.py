@@ -68,7 +68,6 @@ def search_company_info(company_name: str) -> Dict[str, Any]:
         return {"error": str(e), "company_name": company_name}
 
 
-# Removed resource decorator to use default behavior
 def get_search_capabilities() -> List[str]:
     """Get information about the search capabilities"""
     return [
@@ -78,13 +77,14 @@ def get_search_capabilities() -> List[str]:
     ]
 
 
-# Removed resource decorator to use default behavior
+@server.resource()
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
     return {
         "status": "healthy",
         "server": "search",
         "capabilities": ["web search", "company information search"],
+        "hello": "world"
     }
 
 

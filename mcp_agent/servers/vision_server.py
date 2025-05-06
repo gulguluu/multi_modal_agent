@@ -127,6 +127,7 @@ def get_model_info() -> dict:
     }
 
 
+@server.resource()
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
     model_loaded = hasattr(analyzer, "model") and analyzer.model is not None
