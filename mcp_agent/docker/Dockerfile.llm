@@ -1,0 +1,17 @@
+FROM intel/intel-extension-for-pytorch:2.7.10-serving-xpu
+
+WORKDIR /app
+
+COPY ../requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY ../servers/llm_server.py /app/servers/
+RUN mkdir -p /app/models
+
+EXPOSE 8001
+ENV IPEX_OPTIMIZE=1
+ENV IPEX_MERGE_FUSION=1
+ENV IPEX_AUTO_TUNE=1
+ENV IPEX_VERBOSE=1
+ENV TRANSFORMERS_CACHE=/app/models
+
+CMD ["python", "/app/servers/llm_server.py"]

@@ -1,0 +1,100 @@
+services:
+  vision-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.vision
+    image: mcp-vision-server:latest
+    container_name: mcp-vision-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data:/app/data  # For image files
+      - vision-cache:/app/.cache  # For model cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: intel.com/gpu
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - IPEX_OPTIMIZE=1
+      - IPEX_MERGE_FUSION=1
+      - IPEX_AUTO_TUNE=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  llm-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.llm
+    image: mcp-llm-server:latest
+    container_name: mcp-llm-server
+    ports:
+      - "8001:8001"
+    volumes:
+      - llm-cache:/app/.cache  # For model cache
+      - llm-models:/app/models  # For model files
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: intel.com/gpu
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - IPEX_OPTIMIZE=1
+      - IPEX_MERGE_FUSION=1
+      - IPEX_AUTO_TUNE=1
+      - TRANSFORMERS_CACHE=/app/models
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  search-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.search
+    image: mcp-search-server:latest
+    container_name: mcp-search-server
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.client
+    image: mcp-client:latest
+    container_name: mcp-client
+    depends_on:
+      - vision-server
+      - llm-server
+      - search-server
+    volumes:
+      - ../data:/app/data  # For image files
+    environment:
+      - VISION_SERVER_URL=http://vision-server:8000
+      - LLM_SERVER_URL=http://llm-server:8001
+      - SEARCH_SERVER_URL=http://search-server:8002
+    restart: on-failure
+
+volumes:
+  vision-cache:
+  llm-cache:
+  llm-models:

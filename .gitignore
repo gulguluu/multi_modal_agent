@@ -1,0 +1,40 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Model cache
+.cache/
+models/
+
+# Logs
+*.log
+
+# Old files
+main.py
+main copy.py
+
+# Data files
+data/
+*.png
+*.jpg
+*.jpeg
+
+# Environment variables
+.env

@@ -1,0 +1,16 @@
+FROM intel/intel-extension-for-pytorch:2.7.10-serving-xpu
+
+WORKDIR /app
+
+COPY ../requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY ../servers/vision_server.py /app/servers/
+RUN mkdir -p /app/data
+EXPOSE 8000
+
+ENV IPEX_OPTIMIZE=1
+ENV IPEX_MERGE_FUSION=1
+ENV IPEX_AUTO_TUNE=1
+ENV IPEX_VERBOSE=1
+CMD ["python", "/app/servers/vision_server.py"]

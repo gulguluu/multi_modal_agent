@@ -1,0 +1,10 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY ../requirements.txt .
+RUN pip install --no-cache-dir fastmcp langchain langchain-community duckduckgo-search requests
+
+COPY ../servers/search_server.py /app/servers/
+EXPOSE 8002
+CMD ["python", "/app/servers/search_server.py"]
