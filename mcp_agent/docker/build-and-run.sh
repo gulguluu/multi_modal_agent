@@ -9,7 +9,7 @@ NC='\033[0m'
 echo -e "${BLUE}=== Building and deploying MCP Multi-Modal Agent ===${NC}"
 mkdir -p ../data
 echo -e "${YELLOW}Checking for Intel GPU availability...${NC}"
-if [ -z "$(lspci | grep -i vga | grep -i intel)" ]; then
+if [ -z "$(lspci | grep -i display | grep -i intel)" ]; then
   echo -e "${RED}Warning: Intel GPU not detected. The vision and LLM servers may fall back to CPU.${NC}"
 else
   echo -e "${GREEN}Intel GPU detected.${NC}"
