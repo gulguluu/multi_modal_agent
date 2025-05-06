@@ -117,12 +117,25 @@ class MultiModalAgent:
             sse_url = f"{server_url}/sse"
             logger.info(f"Connecting to {server_name} at {sse_url}")
             
-            # Create client with longer timeout
+            # Create a new client for each connection attempt
             client = Client(sse_url)
             
-            async with client:
+            # Use a simpler approach to avoid TaskGroup errors
+            # First initialize the client
+            await client.initialize()
+            
+            # Then list the tools directly
+            try:
                 # Increase timeout to 30 seconds to allow for server startup
-                tools = await asyncio.wait_for(load_mcp_tools(client), timeout=30.0)
+                tools_result = await asyncio.wait_for(client.tools_list(), timeout=30.0)
+                tools = []
+                
+                # Process the tools result into BaseTool objects
+                if tools_result and hasattr(tools_result, 'tools'):
+                    for tool_info in tools_result.tools:
+                        tool = await client.create_tool(tool_info.name)
+                        if tool:
+                            tools.append(tool)
                 
                 if tools:
                     logger.info(
@@ -132,11 +145,18 @@ class MultiModalAgent:
                 else:
                     logger.warning(f"No tools found in {server_name}")
                     return []
+            finally:
+                # Always close the client properly
+                await client.close()
+                
         except asyncio.TimeoutError:
             logger.error(f"Timeout connecting to {server_name} after 30 seconds")
             raise ValueError(f"Timeout connecting to {server_name}")
         except Exception as e:
             logger.error(f"Error connecting to {server_name}: {str(e)}")
+            # Include the cause if available for better debugging
+            if hasattr(e, '__cause__') and e.__cause__:
+                logger.error(f"Caused by: {str(e.__cause__)}")
             raise ValueError(f"Failed to connect to {server_name}: {str(e)}")
 
     async def _get_llm_chain(self):
