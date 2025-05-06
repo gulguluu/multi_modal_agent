@@ -55,22 +55,15 @@ class MultiModalAgent:
         """
         logger.info("Connecting to MCP servers...")
         
-        # Try to connect to servers with retries
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info(f"Connection attempt {attempt}/{max_retries}...")
-                
-                # Try to connect to all servers
                 vision_tools = await self._load_tools_from_server(VISION_SERVER_URL, "Vision Server")
                 llm_tools = await self._load_tools_from_server(LLM_SERVER_URL, "LLM Server")
                 search_tools = await self._load_tools_from_server(SEARCH_SERVER_URL, "Search Server")
-                
-                # If we got here, we connected successfully
                 self.vision_tools = vision_tools
                 self.llm_tools = llm_tools
                 self.search_tools = search_tools
-                
-                # Combine all tools
                 self.all_tools = []
                 if self.vision_tools:
                     self.all_tools.extend(self.vision_tools)
@@ -81,20 +74,15 @@ class MultiModalAgent:
                     logger.info(f"Successfully connected on attempt {attempt}")
                     logger.info(f"Loaded {len(self.all_tools)} tools from MCP servers")
                     return
-                
                 logger.warning(f"Connected to servers but no tools were loaded. Retrying...")
             except Exception as e:
                 logger.warning(f"Connection attempt {attempt} failed: {str(e)}")
             
-            # If we've reached the max retries, give up
             if attempt >= max_retries:
                 break
-                
-            # Wait before retrying
             logger.info(f"Waiting {retry_delay} seconds before next attempt...")
             await asyncio.sleep(retry_delay)
         
-        # If we get here, we failed to connect after all retries
         raise ValueError(
             "Failed to load any tools from MCP servers after multiple attempts. "
             "Check server status and connectivity."
@@ -118,35 +106,26 @@ class MultiModalAgent:
             client = Client(sse_url)
             async with client:
                 try:
-                    # Increase timeout to 30 seconds to allow for server startup
                     try:
-                        # First try the standard way that expects an object with .tools attribute
                         tools = await asyncio.wait_for(load_mcp_tools(client), timeout=30.0)
                     except AttributeError as attr_err:
                         if "'list' object has no attribute 'tools'" in str(attr_err):
-                            # Direct approach - get tools list directly
                             logger.info(f"Using fallback method to load tools from {server_name}")
                             response = await client.list_tools()
                             from langchain.tools import StructuredTool
                             tools = []
                             for tool_spec in response:
-                                # Create a closure to capture the tool name
                                 def create_tool_func(tool_name):
                                     async def tool_func(**kwargs):
-                                        # Run the tool and ensure the result is properly awaited
                                         result = await client.run_tool(tool_name, kwargs)
                                         return result
-                                    return tool_func
-                                
-                                # Get the parameter names from the input schema
+                                    return tool_func                                
                                 param_names = []
                                 if hasattr(tool_spec, 'inputSchema') and tool_spec.inputSchema:
                                     if 'properties' in tool_spec.inputSchema:
                                         param_names = list(tool_spec.inputSchema['properties'].keys())
                                 
                                 logger.info(f"Creating structured tool {tool_spec.name} with parameters: {param_names}")
-                                
-                                # Use StructuredTool for multi-parameter tools
                                 tool = StructuredTool(
                                     name=tool_spec.name,
                                     description=tool_spec.description,
@@ -233,11 +212,11 @@ class MultiModalAgent:
     async def analyze_logo(
         self, image_path: str, is_url: bool = False
     ) -> Dict[str, Any]:
-        """Analyze a logo image and retrieve company information
+        """Analyze a logo image and return company information
 
         Args:
-            image_path: Path to the logo image file or URL
-            is_url: Flag indicating if image_path is a URL
+            image_path: Path to image file or URL
+            is_url: Whether the image_path is a URL
 
         Returns:
             Dict containing analysis results and company information
@@ -264,21 +243,44 @@ class MultiModalAgent:
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                 logger.info(f"Image downloaded to: {local_image_path}")
-            result = await vision_tool.ainvoke(
-                {"image_path": local_image_path, "prompt": "What company logo is this?"}
-            )
-            # Handle the result which might still be a coroutine
-            if hasattr(result, '__await__'):  # Check if result is awaitable
-                logger.info("Result is a coroutine, awaiting it")
-                result = await result
+                
+            # Directly invoke the tool function to bypass LangChain's tool invocation
+            logger.info("Directly calling vision tool function")
             
-            company_name = result.strip() if result else "Unknown"
+            try:
+                # Get the underlying tool function
+                tool_fn = vision_tool._run
+                
+                # Call it directly with the arguments
+                result = await tool_fn({"image_path": local_image_path, "prompt": "What company logo is this?"})
+                
+                # Ensure the result is fully awaited if it's a coroutine
+                while asyncio.iscoroutine(result):
+                    logger.info("Result is still a coroutine, awaiting it again")
+                    result = await result
+                    
+                logger.info(f"Final result type: {type(result)}")
+                
+                if not isinstance(result, str):
+                    logger.warning(f"Expected string result, got {type(result)}")
+                    result = str(result) if result is not None else "Unknown"
+                    
+                company_name = result.strip() if result else "Unknown"
+            except Exception as tool_err:
+                logger.error(f"Error directly invoking vision tool: {str(tool_err)}")
+                if hasattr(tool_err, '__cause__') and tool_err.__cause__:
+                    logger.error(f"Caused by: {str(tool_err.__cause__)}")
+                company_name = "Unknown (Error processing logo)"
+                result = str(tool_err)
+            
             logger.info(f"Detected logo/company: {company_name}")
             query = f"Provide detailed information about {company_name}. Include headquarters location, what they do, and their website."
             response = await self.agent.ainvoke(query)
             return {"detected_logo": result, "company_info": response["output"]}
         except Exception as e:
             logger.error(f"Error in analyze_logo: {str(e)}")
+            if hasattr(e, '__cause__') and e.__cause__:
+                logger.error(f"Caused by: {str(e.__cause__)}")
             return {"error": str(e), "detected_logo": None, "company_info": None}
 
 
