@@ -122,7 +122,7 @@ def answer_question(question: str) -> str:
     return llm_processor.generate(prompt)
 
 
-@server.resource(uri="/model-info")
+# Removed resource decorator to use default behavior
 def get_model_info() -> Dict[str, Any]:
     """Get information about the loaded language model"""
     return {
@@ -133,7 +133,7 @@ def get_model_info() -> Dict[str, Any]:
     }
 
 
-@server.prompt(name="react_agent_prompt")
+# Using simple function instead of prompt decorator
 def react_agent_prompt() -> str:
     """Prompt template for ReAct agent reasoning"""
     return """
@@ -159,7 +159,7 @@ def react_agent_prompt() -> str:
     """
 
 
-@server.resource(uri="/health")
+# Removed resource decorator to use default behavior
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
     return {
