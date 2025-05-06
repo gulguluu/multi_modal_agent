@@ -118,7 +118,7 @@ def analyze_image(
     return analyzer.analyze(image_path, prompt)
 
 
-@server.resource(uri="model-info")
+@server.resource(uri="/model-info")
 def get_model_info() -> dict:
     """Get information about the loaded vision model"""
     return {
@@ -128,7 +128,7 @@ def get_model_info() -> dict:
     }
 
 
-@server.resource(uri="health")
+@server.resource(uri="/health")
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
     return {
