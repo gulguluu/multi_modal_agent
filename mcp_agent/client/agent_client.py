@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Multi-Modal Agent Client
-Connects to MCP servers for vision, LLM, and search capabilities
-Orchestrates the multi-modal agent workflow
+Multi-Modal Agent Client for analyzing logos and retrieving company information
 """
 
 import argparse
@@ -10,18 +8,17 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+import sys
+from typing import Dict, Any
 
 import requests
-from fastmcp import Client
-from langchain.agents import AgentType, initialize_agent
-from langchain.tools import BaseTool
-from langchain_core.prompts import PromptTemplate
-from langchain_mcp_adapters.tools import load_mcp_tools
+from mcp.client import Client
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
@@ -36,261 +33,61 @@ logger.info(f"Connecting to Search Server at: {SEARCH_SERVER_URL}")
 
 
 class MultiModalAgent:
-    """Client for orchestrating multi-modal agent interactions using MCP servers"""
+    """Multi-Modal Agent for analyzing logos and retrieving company information"""
 
-    def __init__(self):
-        """Initialize the multi-modal agent client"""
-        self.vision_tools = None
-        self.llm_tools = None
-        self.search_tools = None
-        self.all_tools = []
-        self.agent = None
-
-    async def connect_to_servers(self, max_retries=5, retry_delay=5):
-        """Connect to all MCP servers and load tools
-        
-        Args:
-            max_retries: Maximum number of connection retry attempts
-            retry_delay: Delay in seconds between retry attempts
-        """
-        logger.info("Connecting to MCP servers...")
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                logger.info(f"Connection attempt {attempt}/{max_retries}...")
-                vision_tools = await self._load_tools_from_server(VISION_SERVER_URL, "Vision Server")
-                llm_tools = await self._load_tools_from_server(LLM_SERVER_URL, "LLM Server")
-                search_tools = await self._load_tools_from_server(SEARCH_SERVER_URL, "Search Server")
-                self.vision_tools = vision_tools
-                self.llm_tools = llm_tools
-                self.search_tools = search_tools
-                self.all_tools = []
-                if self.vision_tools:
-                    self.all_tools.extend(self.vision_tools)
-                if self.search_tools:
-                    self.all_tools.extend(self.search_tools)
-                
-                if self.all_tools:
-                    logger.info(f"Successfully connected on attempt {attempt}")
-                    logger.info(f"Loaded {len(self.all_tools)} tools from MCP servers")
-                    return
-                logger.warning(f"Connected to servers but no tools were loaded. Retrying...")
-            except Exception as e:
-                logger.warning(f"Connection attempt {attempt} failed: {str(e)}")
-            
-            if attempt >= max_retries:
-                break
-            logger.info(f"Waiting {retry_delay} seconds before next attempt...")
-            await asyncio.sleep(retry_delay)
-        
-        raise ValueError(
-            "Failed to load any tools from MCP servers after multiple attempts. "
-            "Check server status and connectivity."
-        )
-
-    async def _load_tools_from_server(
-        self, server_url: str, server_name: str
-    ) -> List[BaseTool]:
-        """Load tools from an MCP server
-
-        Args:
-            server_url: URL of the MCP server
-            server_name: Name of the server for logging
-
-        Returns:
-            List of tools loaded from the server
-        """
-        try:
-            sse_url = f"{server_url}/sse"
-            logger.info(f"Connecting to {server_name} at {sse_url}")
-            client = Client(sse_url)
-            async with client:
-                try:
-                    try:
-                        tools = await asyncio.wait_for(load_mcp_tools(client), timeout=30.0)
-                    except AttributeError as attr_err:
-                        if "'list' object has no attribute 'tools'" in str(attr_err):
-                            logger.info(f"Using fallback method to load tools from {server_name}")
-                            response = await client.list_tools()
-                            from langchain.tools import StructuredTool
-                            tools = []
-                            for tool_spec in response:
-                                def create_tool_func(tool_name):
-                                    async def tool_func(**kwargs):
-                                        result = await client.run_tool(tool_name, kwargs)
-                                        return result
-                                    return tool_func                                
-                                param_names = []
-                                if hasattr(tool_spec, 'inputSchema') and tool_spec.inputSchema:
-                                    if 'properties' in tool_spec.inputSchema:
-                                        param_names = list(tool_spec.inputSchema['properties'].keys())
-                                
-                                logger.info(f"Creating structured tool {tool_spec.name} with parameters: {param_names}")
-                                tool = StructuredTool(
-                                    name=tool_spec.name,
-                                    description=tool_spec.description,
-                                    func=create_tool_func(tool_spec.name),
-                                    args_schema=tool_spec.inputSchema if hasattr(tool_spec, 'inputSchema') else None
-                                )
-                                tools.append(tool)
-                        else:
-                            raise
-                    
-                    if tools:
-                        logger.info(
-                            f"Successfully loaded {len(tools)} tools from {server_name}: {[t.name for t in tools]}"
-                        )
-                        return tools
-                    else:
-                        logger.warning(f"No tools found in {server_name}")
-                        return []
-                except Exception as inner_e:
-                    logger.error(f"Error during tool loading from {server_name}: {str(inner_e)}")
-                    if hasattr(inner_e, '__cause__') and inner_e.__cause__:
-                        logger.error(f"Caused by: {str(inner_e.__cause__)}")
-                    raise
-                
-        except asyncio.TimeoutError:
-            logger.error(f"Timeout connecting to {server_name} after 30 seconds")
-            raise ValueError(f"Timeout connecting to {server_name}")
-        except Exception as e:
-            logger.error(f"Error connecting to {server_name}: {str(e)}")
-            if hasattr(e, '__cause__') and e.__cause__:
-                logger.error(f"Caused by: {str(e.__cause__)}")
-            raise ValueError(f"Failed to connect to {server_name}: {str(e)}")
-
-    async def _get_llm_chain(self):
-        """Create a chain using the LLM server's generate_text tool"""
-        if not self.llm_tools:
-            raise ValueError("LLM tools not loaded. Call connect_to_servers() first.")
-        generate_text_tool = None
-        for tool in self.llm_tools:
-            if tool.name == "generate_text":
-                generate_text_tool = tool
-                break
-        if not generate_text_tool:
-            raise ValueError("generate_text tool not found in LLM server")
-
-        return generate_text_tool
-
-    async def _get_prompt_from_server(self):
-        """Get the ReAct agent prompt from the LLM server"""
-        llm_sse_url = f"{LLM_SERVER_URL}/sse"
-        client = Client(llm_sse_url)
-        async with client:
-            prompts = await asyncio.wait_for(client.list_prompts_mcp(), timeout=10.0)
-            prompt_names = [p.name for p in prompts]
-            if "react_agent_prompt" in prompt_names:
-                prompt_result = await asyncio.wait_for(
-                    client.get_prompt("react_agent_prompt"), timeout=10.0
-                )
-                prompt_text = prompt_result.text
-                return PromptTemplate.from_template(prompt_text)
-            else:
-                raise ValueError("react_agent_prompt not found on the LLM server")
-
-    async def create_agent(self):
-        """Create the multi-modal agent using tools from all servers"""
-        if not self.all_tools:
-            raise ValueError("Tools not loaded. Call connect_to_servers() first.")
-        logger.info("Creating multi-modal agent...")
-        llm_chain = await self._get_llm_chain()
-        prompt = await self._get_prompt_from_server()
-        self.agent = initialize_agent(
-            tools=self.all_tools,
-            llm=llm_chain,
-            agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-            verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=5,
-            agent_kwargs={"prompt": prompt},
-        )
-
-        logger.info("Multi-modal agent created successfully")
-        return self.agent
-
-    async def analyze_logo(
-        self, image_path: str, is_url: bool = False
-    ) -> Dict[str, Any]:
-        """Analyze a logo image and return company information
+    async def analyze_logo(self, image_path: str, is_url: bool = False) -> Dict[str, Any]:
+        """Analyze a logo image and retrieve company information
 
         Args:
             image_path: Path to image file or URL
             is_url: Whether the image_path is a URL
+
+        Returns:
+            Dict containing analysis results and company information
         """
-        try:
-            local_image_path = image_path  # Set default value
-            if is_url:
-                logger.info(f"Downloading image from URL: {image_path}")
-                response = requests.get(image_path, stream=True)
-                response.raise_for_status()
-                data_dir = Path("/app/data")
-                data_dir.mkdir(exist_ok=True)
-                local_image_path = str(data_dir / "downloaded_logo.png")
-                with open(local_image_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                logger.info(f"Image downloaded to: {local_image_path}")
-            
-            # Directly run the tool without using LangChain
-            logger.info(f"Running vision tool directly")
-            
-            # Skip the client connection and use a simpler approach for now
-            # The direct client connection has issues with context management
-            try:
-                # Use the existing vision_tools we already connected to
-                vision_tool = None
-                for tool in self.vision_tools:
-                    if tool.name == "analyze_image":
-                        vision_tool = tool
-                        break
-                
-                if vision_tool:
-                    # Use callable instead of ainvoke to prevent coroutine issues
-                    from mcp.client.tools import create_tool_caller
-                    tool_caller = create_tool_caller(vision_tool.name, self.vision_tools)
-                    
-                    # This should give a direct callable that handles the async part internally
-                    result = tool_caller(image_path=local_image_path, prompt="What company logo is this?")
-                    
-                    # If we still got a coroutine somehow, just use our fallback
-                    if asyncio.iscoroutine(result):
-                        logger.warning("Tool returned a coroutine, using fallback value")
-                        company_name = "Google"  # Fallback for testing
-                        result = "Google logo"
-                    else:
-                        company_name = result.strip() if result else "Unknown"
-                        logger.info(f"Detected logo/company: {company_name}")
-                else:
-                    # Fallback if no tool is found
-                    company_name = "Google"  # Fallback for testing
-                    result = "Google logo"
-                    logger.warning("Vision tool not found, using fallback value")
-            except Exception as tool_err:
-                logger.error(f"Error running vision tool: {str(tool_err)}")
-                company_name = "Google"  # Fallback for testing
-                result = "Google logo"
-                
-            # Get company info using search tools
-            search_tool = None
-            for tool in self.search_tools:
-                if tool.name == "search_company_info":
-                    search_tool = tool
-                    break
-            
-            company_info = "No company information available."
-            if search_tool:
-                try:
-                    info_result = await search_tool.ainvoke({"company_name": company_name})
-                    company_info = info_result if isinstance(info_result, str) else str(info_result)
-                except Exception as search_err:
-                    logger.error(f"Error searching company info: {str(search_err)}")
-                    company_info = f"Error retrieving information about {company_name}: {str(search_err)}"
-            
-            return {"detected_logo": result, "company_info": company_info}
-        except Exception as e:
-            logger.error(f"Error in analyze_logo: {str(e)}")
-            return {"error": str(e), "detected_logo": None, "company_info": None}
+        local_image_path = self._download_image(image_path, is_url) if is_url else image_path
+        company_name = await self._identify_logo(local_image_path)
+        company_info = await self._get_company_info(company_name)
+        
+        return {"detected_logo": company_name, "company_info": company_info}
+    
+    def _download_image(self, image_url: str, is_url: bool) -> str:
+        """Download image from URL to local path"""
+        logger.info(f"Downloading image from URL: {image_url}")
+        response = requests.get(image_url, stream=True)
+        response.raise_for_status()
+        
+        data_dir = Path("/app/data")
+        data_dir.mkdir(exist_ok=True)
+        local_path = str(data_dir / "downloaded_logo.png")
+        
+        with open(local_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        logger.info(f"Image downloaded to: {local_path}")
+        return local_path
+    
+    async def _identify_logo(self, image_path: str) -> str:
+        """Identify logo in image using Vision Server"""
+        logger.info("Analyzing image with Vision Server")
+        async with Client(f"{VISION_SERVER_URL}/sse") as vision_client:
+            result = await vision_client.run_tool(
+                "analyze_image",
+                {"image_path": image_path, "prompt": "What company logo is this?"}
+            )
+            company_name = result.strip() if result else "Unknown"
+            logger.info(f"Detected logo/company: {company_name}")
+            return company_name
+    
+    async def _get_company_info(self, company_name: str) -> str:
+        """Get company information using Search Server"""
+        logger.info(f"Getting company info for: {company_name}")
+        async with Client(f"{SEARCH_SERVER_URL}/sse") as search_client:
+            info_result = await search_client.run_tool(
+                "search_company_info",
+                {"company_name": company_name}
+            )
+            return info_result if isinstance(info_result, str) else str(info_result)
 
 
 async def main():
@@ -300,73 +97,40 @@ async def main():
         parser.add_argument(
             "--image", 
             type=str, 
-            default="./logo1.png",
-            help="Path to local image file or URL of logo image"
+            required=True,
+            help="Path to logo image file or URL"
         )
         parser.add_argument(
             "--url", 
-            action="store_true",
-            help="Flag to indicate the image parameter is a URL"
+            action="store_true", 
+            help="Flag indicating if --image is a URL"
         )
         parser.add_argument(
             "--debug", 
-            action="store_true",
-            help="Enable debug mode with more detailed logging"
+            action="store_true", 
+            help="Enable debug logging"
         )
         args = parser.parse_args()
-        
+
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
-            logging.getLogger('mcp').setLevel(logging.DEBUG)
-        
-        image_path = args.image
-        is_url = args.url
+            logging.getLogger("httpx").setLevel(logging.INFO)
 
         print("🧠 Initializing Multi-Modal Agent...")
         agent = MultiModalAgent()
 
-        print("🔌 Connecting to MCP servers...")
-        try:
-            await agent.connect_to_servers(max_retries=10, retry_delay=10)
-        except Exception as conn_err:
-            logger.error(f"Connection error: {str(conn_err)}")
-            print(f"❌ Connection error: {str(conn_err)}")
-            if hasattr(conn_err, '__cause__') and conn_err.__cause__:
-                logger.error(f"Caused by: {str(conn_err.__cause__)}")
-                print(f"  Caused by: {str(conn_err.__cause__)}")
-            return
-        
-        if not agent.all_tools:
-            print("❌ Error: No tools loaded from MCP servers. Check server status and network connectivity.")
-            return
+        print(f"🖼️ Analyzing image {'URL' if args.url else 'file'}: {args.image}")
+        result = await agent.analyze_logo(args.image, is_url=args.url)
 
-        print(f"🖼️ Analyzing {'image URL' if is_url else 'image file'}: {image_path}")
-        try:
-            result = await agent.analyze_logo(image_path, is_url=is_url)
-            
-            if "error" in result and result["error"]:
-                print(f"❌ Error: {result['error']}")
-            else:
-                print("✅ Detected logo/company name:", result["detected_logo"])
-                print("\n🎯 Final Answer:\n", result["company_info"])
-        except Exception as analyze_err:
-            logger.error(f"Error analyzing logo: {str(analyze_err)}")
-            print(f"❌ Error analyzing logo: {str(analyze_err)}")
-            if hasattr(analyze_err, '__cause__') and analyze_err.__cause__:
-                logger.error(f"Caused by: {str(analyze_err.__cause__)}")
-                print(f"  Caused by: {str(analyze_err.__cause__)}")
+        print(f"✅ Detected logo/company name: {result['detected_logo']}")
+        print("")
+        print("🎯 Company Information:")
+        print(f"{result['company_info']}")
 
     except Exception as e:
         logger.error(f"Error in main execution: {str(e)}")
-        print(f"❌ Error: {str(e)}")
-        if hasattr(e, '__cause__') and e.__cause__:
-            logger.error(f"Caused by: {str(e.__cause__)}")
-            print(f"  Caused by: {str(e.__cause__)}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        if args.debug:
-            print("\nTraceback:")
-            print(traceback.format_exc())
+        print(f"\n❌ Error: {str(e)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
