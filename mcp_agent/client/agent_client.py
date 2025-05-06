@@ -113,38 +113,32 @@ class MultiModalAgent:
             List of tools loaded from the server
         """
         try:
-            # Explicitly use the /sse endpoint
             sse_url = f"{server_url}/sse"
             logger.info(f"Connecting to {server_name} at {sse_url}")
-            
-            # Create a new client for each connection attempt
             client = Client(sse_url)
-            
-            # Use the load_mcp_tools function but with a proper timeout and error handling
-            try:
-                # Increase timeout to 30 seconds to allow for server startup
-                tools = await asyncio.wait_for(load_mcp_tools(client), timeout=30.0)
-                
-                if tools:
-                    logger.info(
-                        f"Successfully loaded {len(tools)} tools from {server_name}: {[t.name for t in tools]}"
-                    )
-                    return tools
-                else:
-                    logger.warning(f"No tools found in {server_name}")
-                    return []
-            except Exception as inner_e:
-                logger.error(f"Error during tool loading from {server_name}: {str(inner_e)}")
-                if hasattr(inner_e, '__cause__') and inner_e.__cause__:
-                    logger.error(f"Caused by: {str(inner_e.__cause__)}")
-                raise
+            async with client:
+                try:
+                    tools = await asyncio.wait_for(load_mcp_tools(client), timeout=30.0)
+                    
+                    if tools:
+                        logger.info(
+                            f"Successfully loaded {len(tools)} tools from {server_name}: {[t.name for t in tools]}"
+                        )
+                        return tools
+                    else:
+                        logger.warning(f"No tools found in {server_name}")
+                        return []
+                except Exception as inner_e:
+                    logger.error(f"Error during tool loading from {server_name}: {str(inner_e)}")
+                    if hasattr(inner_e, '__cause__') and inner_e.__cause__:
+                        logger.error(f"Caused by: {str(inner_e.__cause__)}")
+                    raise
                 
         except asyncio.TimeoutError:
             logger.error(f"Timeout connecting to {server_name} after 30 seconds")
             raise ValueError(f"Timeout connecting to {server_name}")
         except Exception as e:
             logger.error(f"Error connecting to {server_name}: {str(e)}")
-            # Include the cause if available for better debugging
             if hasattr(e, '__cause__') and e.__cause__:
                 logger.error(f"Caused by: {str(e.__cause__)}")
             raise ValueError(f"Failed to connect to {server_name}: {str(e)}")
@@ -268,7 +262,6 @@ async def main():
         )
         args = parser.parse_args()
         
-        # Set debug logging if requested
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
             logging.getLogger('mcp').setLevel(logging.DEBUG)
@@ -281,12 +274,10 @@ async def main():
 
         print("🔌 Connecting to MCP servers...")
         try:
-            # Use longer retry delay and more retries for initial startup
             await agent.connect_to_servers(max_retries=10, retry_delay=10)
         except Exception as conn_err:
             logger.error(f"Connection error: {str(conn_err)}")
             print(f"❌ Connection error: {str(conn_err)}")
-            # Print more detailed error information
             if hasattr(conn_err, '__cause__') and conn_err.__cause__:
                 logger.error(f"Caused by: {str(conn_err.__cause__)}")
                 print(f"  Caused by: {str(conn_err.__cause__)}")
@@ -308,7 +299,6 @@ async def main():
         except Exception as analyze_err:
             logger.error(f"Error analyzing logo: {str(analyze_err)}")
             print(f"❌ Error analyzing logo: {str(analyze_err)}")
-            # Print more detailed error information
             if hasattr(analyze_err, '__cause__') and analyze_err.__cause__:
                 logger.error(f"Caused by: {str(analyze_err.__cause__)}")
                 print(f"  Caused by: {str(analyze_err.__cause__)}")
@@ -316,11 +306,9 @@ async def main():
     except Exception as e:
         logger.error(f"Error in main execution: {str(e)}")
         print(f"❌ Error: {str(e)}")
-        # Print more detailed error information
         if hasattr(e, '__cause__') and e.__cause__:
             logger.error(f"Caused by: {str(e.__cause__)}")
             print(f"  Caused by: {str(e.__cause__)}")
-        # Print traceback for debugging
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         if args.debug:
