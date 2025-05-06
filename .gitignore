@@ -27,7 +27,6 @@ models/
 *.log
 
 # Old files
-main.py
 main copy.py
 
 # Data files
