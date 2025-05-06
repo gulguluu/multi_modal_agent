@@ -77,9 +77,8 @@ class MultiModalAgent:
         """Call an MCP tool with retry logic and proper error handling"""
         for attempt in range(self.max_retries + 1):
             try:
-                # Use a timeout to prevent hanging connections
-                timeout = httpx.Timeout(10.0, connect=5.0)
-                async with Client(f"{server_url}/sse", timeout=timeout) as client:
+                # FastMCP 2.2.10 doesn't support timeout parameter
+                async with Client(f"{server_url}/sse") as client:
                     # Use a shield to prevent cancellation from propagating
                     result = await asyncio.shield(client.run_tool(tool_name, params))
                     return result
