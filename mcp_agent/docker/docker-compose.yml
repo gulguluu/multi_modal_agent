@@ -10,13 +10,9 @@ services:
     volumes:
       - ../data:/app/data  # For image files
       - vision-cache:/app/.cache  # For model cache
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: intel.com/gpu
-              count: 1
-              capabilities: [gpu]
+    privileged: true
+    devices:
+      - /dev/dri:/dev/dri
     environment:
       - IPEX_OPTIMIZE=1
       - IPEX_MERGE_FUSION=1
@@ -40,13 +36,9 @@ services:
     volumes:
       - llm-cache:/app/.cache  # For model cache
       - llm-models:/app/models  # For model files
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: intel.com/gpu
-              count: 1
-              capabilities: [gpu]
+    privileged: true
+    devices:
+      - /dev/dri:/dev/dri
     environment:
       - IPEX_OPTIMIZE=1
       - IPEX_MERGE_FUSION=1
