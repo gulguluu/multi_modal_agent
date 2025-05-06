@@ -11,7 +11,6 @@ import os
 from typing import Any, Dict, List, Optional
 
 from fastmcp import Client
-from fastmcp.client.transports import SSETransport
 from langchain.agents import AgentType, initialize_agent
 from langchain.tools import BaseTool
 from langchain_core.prompts import PromptTemplate
@@ -83,16 +82,20 @@ class MultiModalAgent:
             List of tools loaded from the server
         """
         try:
-            # Create SSE transport for the server URL
-            transport = SSETransport(url=f"{server_url}/sse")
-            client = Client(transport)
+            # Use direct client connection without specifying transport
+            # FastMCP will auto-detect the appropriate transport
+            client = Client(server_url)
             
             async with client:
-                tools = await load_mcp_tools(client)
+                # Add a timeout to prevent hanging
+                tools = await asyncio.wait_for(load_mcp_tools(client), timeout=10.0)
                 logger.info(
                     f"Loaded {len(tools)} tools from {server_name}: {[t.name for t in tools]}"
                 )
                 return tools
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout connecting to {server_name}")
+            return []
         except Exception as e:
             logger.error(f"Error connecting to {server_name}: {str(e)}")
             return []
@@ -117,18 +120,22 @@ class MultiModalAgent:
     async def _get_prompt_from_server(self):
         """Get the ReAct agent prompt from the LLM server"""
         try:
-            # Create SSE transport for the LLM server
-            transport = SSETransport(url=f"{LLM_SERVER_URL}/sse")
-            client = Client(transport)
+            # Use direct client connection without specifying transport
+            client = Client(LLM_SERVER_URL)
             
             async with client:
-                prompts = await client.list_prompts_mcp()
-                prompt_names = [p.name for p in prompts]
+                try:
+                    # Add a timeout to prevent hanging
+                    prompts = await asyncio.wait_for(client.list_prompts_mcp(), timeout=5.0)
+                    prompt_names = [p.name for p in prompts]
 
-                if "react_agent_prompt" in prompt_names:
-                    prompt_result = await client.get_prompt("react_agent_prompt")
-                    prompt_text = prompt_result.text
-                    return PromptTemplate.from_template(prompt_text)
+                    if "react_agent_prompt" in prompt_names:
+                        prompt_result = await asyncio.wait_for(client.get_prompt("react_agent_prompt"), timeout=5.0)
+                        prompt_text = prompt_result.text
+                        return PromptTemplate.from_template(prompt_text)
+                except asyncio.TimeoutError:
+                    logger.warning("Timeout getting prompt from LLM server, using default prompt")
+                    # Fall through to default prompt
 
                 # Fallback to default prompt
                 return PromptTemplate.from_template(
