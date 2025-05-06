@@ -12,7 +12,7 @@ import sys
 from typing import Dict, Any
 
 import requests
-from mcp.client import Client
+from fastmcp import Client
 
 # Configure logging
 logging.basicConfig(
