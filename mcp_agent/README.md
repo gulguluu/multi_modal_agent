@@ -1,7 +1,7 @@
 # Multi-Modal Agent with MCP Architecture
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.8%2B-blue)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Intel XPU](https://img.shields.io/badge/Intel-XPU-0071C5)
 ![MCP](https://img.shields.io/badge/MCP-2.0-green)
 
@@ -19,45 +19,47 @@ A production-ready multi-modal agent implementation using the Model Context Prot
 ## 🏗️ Architecture
 
 ```mermaid
-graph TD
-    subgraph "Client Application"
-        Client["Multi-Modal Agent Client"] --> |"1. Orchestrates"| AgentLoop
-        AgentLoop["ReAct Agent Loop"] --> |"2. Coordinates"| ToolCalls
-        ToolCalls["Tool Calls"] --> |"3. Invokes"| MCPClients
-        MCPClients["MCP Clients"] --> |"4. Connects to"| Servers
-    end
-
-    subgraph "MCP Servers"
-        Servers --> VisionServer
-        Servers --> LLMServer
-        Servers --> SearchServer
-        
-        subgraph "Vision Server (Intel XPU)"
-            VisionServer["Vision MCP Server"] --> VisionModel["Qwen2.5-VL-3B-Instruct"] 
-            VisionServer --> |"Exposes"| VisionTools["analyze_image Tool"]
-        end
-        
-        subgraph "LLM Server (Intel XPU)"
-            LLMServer["LLM MCP Server"] --> LLMModel["Zephyr-7b-beta"] 
-            LLMServer --> |"Exposes"| LLMTools["generate_text Tool"]
-            LLMServer --> |"Defines"| Prompts["ReAct Agent Prompt"]
-        end
-        
-        subgraph "Search Server"
-            SearchServer["Search MCP Server"] --> SearchEngine["DuckDuckGo"]
-            SearchServer --> |"Exposes"| SearchTools["search_web Tool"]
-        end
-    end
+flowchart TD
+    %% Define styles for nodes and subgraphs
+    classDef clientNode fill:#6CB4EE,stroke:#0066CC,color:white,font-weight:bold
+    classDef visionNode fill:#FF9966,stroke:#FF6600,color:white,font-weight:bold
+    classDef llmNode fill:#9370DB,stroke:#6A0DAD,color:white,font-weight:bold
+    classDef searchNode fill:#90EE90,stroke:#32CD32,color:white,font-weight:bold
+    classDef workflowNode fill:#FFD700,stroke:#DAA520,color:black,font-weight:bold
     
-    subgraph "Workflow"
-        Image["Input Image"] --> |"5. Analyze"| VisionServer
-        VisionServer --> |"6. Logo Identification"| Client
-        Client --> |"7. Query Generation"| LLMServer
-        LLMServer --> |"8. Reasoning"| Client
-        Client --> |"9. Web Search"| SearchServer
-        SearchServer --> |"10. Company Info"| Client
-        Client --> |"11. Final Answer"| Result["Company Details"]
-    end
+    %% Client Application
+    Client["🧠 Multi-Modal Agent"] --> AgentLoop["⚙️ ReAct Loop"] --> MCPClients["🔌 MCP Clients"]
+    
+    %% MCP Servers
+    MCPClients --> VisionServer["👁️ Vision Server"] 
+    MCPClients --> LLMServer["💬 LLM Server"]
+    MCPClients --> SearchServer["🔍 Search Server"]
+    
+    %% Vision Server
+    VisionServer --> VisionModel["Qwen2.5-VL-3B"] 
+    VisionServer -.-> VisionTools["analyze_image"] 
+    
+    %% LLM Server
+    LLMServer --> LLMModel["Zephyr-7b-beta"] 
+    LLMServer -.-> LLMTools["generate_text"] 
+    
+    %% Search Server
+    SearchServer --> SearchEngine["DuckDuckGo"] 
+    SearchServer -.-> SearchTools["search_web"] 
+    
+    %% Workflow
+    Image["🖼️ Input Image"] --> VisionServer
+    VisionServer --> |"Logo ID"| Client
+    Client --> |"Query"| LLMServer
+    Client --> |"Search"| SearchServer
+    Client --> Result["📊 Company Details"]
+    
+    %% Apply styles
+    class Client,AgentLoop,MCPClients clientNode
+    class VisionServer,VisionModel,VisionTools visionNode
+    class LLMServer,LLMModel,LLMTools llmNode
+    class SearchServer,SearchEngine,SearchTools searchNode
+    class Image,Result workflowNode
 ```
 
 ## 🧠 Agent Pattern: ReAct with Perception
