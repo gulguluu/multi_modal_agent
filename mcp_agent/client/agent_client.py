@@ -214,11 +214,12 @@ class MultiModalAgent:
         logger.info("Multi-modal agent created successfully")
         return self.agent
 
-    async def analyze_logo(self, image_path: str) -> Dict[str, Any]:
+    async def analyze_logo(self, image_path: str, is_url: bool = False) -> Dict[str, Any]:
         """Analyze a logo image and retrieve company information
 
         Args:
-            image_path: Path to the logo image file
+            image_path: Path to the logo image file or URL
+            is_url: Flag indicating if image_path is a URL
 
         Returns:
             Dict containing analysis results and company information
