@@ -70,24 +70,32 @@ class MultiModalAgent:
     async def _identify_logo(self, image_path: str) -> str:
         """Identify logo in image using Vision Server"""
         logger.info("Analyzing image with Vision Server")
-        async with Client(f"{VISION_SERVER_URL}/sse") as vision_client:
-            result = await vision_client.run_tool(
-                "analyze_image",
-                {"image_path": image_path, "prompt": "What company logo is this?"}
-            )
-            company_name = result.strip() if result else "Unknown"
-            logger.info(f"Detected logo/company: {company_name}")
-            return company_name
+        try:
+            async with Client(f"{VISION_SERVER_URL}/sse") as vision_client:
+                result = await vision_client.run_tool(
+                    "analyze_image",
+                    {"image_path": image_path, "prompt": "What company logo is this?"}
+                )
+                company_name = result.strip() if result else "Unknown"
+                logger.info(f"Detected logo/company: {company_name}")
+                return company_name
+        except Exception as e:
+            logger.error(f"Error identifying logo: {str(e)}")
+            return "Unknown"
     
     async def _get_company_info(self, company_name: str) -> str:
         """Get company information using Search Server"""
         logger.info(f"Getting company info for: {company_name}")
-        async with Client(f"{SEARCH_SERVER_URL}/sse") as search_client:
-            info_result = await search_client.run_tool(
-                "search_company_info",
-                {"company_name": company_name}
-            )
-            return info_result if isinstance(info_result, str) else str(info_result)
+        try:
+            async with Client(f"{SEARCH_SERVER_URL}/sse") as search_client:
+                info_result = await search_client.run_tool(
+                    "search_company_info",
+                    {"company_name": company_name}
+                )
+                return info_result if isinstance(info_result, str) else str(info_result)
+        except Exception as e:
+            logger.error(f"Error getting company info: {str(e)}")
+            return f"Could not retrieve information for {company_name}."
 
 
 async def main():
@@ -115,18 +123,25 @@ async def main():
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
             logging.getLogger("httpx").setLevel(logging.INFO)
+            logging.getLogger("mcp").setLevel(logging.DEBUG)
 
         print("🧠 Initializing Multi-Modal Agent...")
         agent = MultiModalAgent()
 
         print(f"🖼️ Analyzing image {'URL' if args.url else 'file'}: {args.image}")
-        result = await agent.analyze_logo(args.image, is_url=args.url)
+        
+        # Use asyncio.shield to prevent TaskGroup cancellation from propagating
+        result = await asyncio.shield(agent.analyze_logo(args.image, is_url=args.url))
 
         print(f"✅ Detected logo/company name: {result['detected_logo']}")
         print("")
         print("🎯 Company Information:")
         print(f"{result['company_info']}")
 
+    except asyncio.CancelledError:
+        logger.error("Operation was cancelled")
+        print("\n❌ Error: Operation was cancelled")
+        sys.exit(1)
     except Exception as e:
         logger.error(f"Error in main execution: {str(e)}")
         print(f"\n❌ Error: {str(e)}")
@@ -134,4 +149,12 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Use a more robust asyncio run approach
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n⚠️ Operation interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n❌ Fatal error: {str(e)}")
+        sys.exit(1)
