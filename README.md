@@ -1,7 +1,7 @@
 # Multi-Modal Agent for Logo Recognition
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.8%2B-blue)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Intel XPU](https://img.shields.io/badge/Intel-XPU-0071C5)
 
 This repository contains implementations of a multi-modal agent for logo recognition and company information retrieval, optimized for Intel GPUs using Intel Extension for PyTorch.
