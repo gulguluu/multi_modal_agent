@@ -10,4 +10,7 @@ RUN mkdir -p /app/data
 ENV VISION_SERVER_URL=http://vision-server:8000
 ENV LLM_SERVER_URL=http://llm-server:8001
 ENV SEARCH_SERVER_URL=http://search-server:8002
-CMD ["python", "/app/client/agent_client.py"]
+# Use ENTRYPOINT for the base command and allow CMD to provide arguments
+ENTRYPOINT ["python", "/app/client/agent_client.py"]
+# Default command (can be overridden by docker-compose run client ...)
+CMD []
