@@ -156,7 +156,7 @@ def react_agent_prompt() -> str:
     """
 
 
-@server.resource()
+@server.resource(uri="health")
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
     model_loaded = hasattr(llm_processor, "model") and llm_processor.model is not None

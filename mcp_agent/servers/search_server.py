@@ -77,7 +77,7 @@ def get_search_capabilities() -> List[str]:
     ]
 
 
-@server.resource()
+@server.resource(uri="health")
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
     return {
