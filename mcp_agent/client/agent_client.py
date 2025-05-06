@@ -133,7 +133,9 @@ class MultiModalAgent:
                                 # Create a closure to capture the tool name
                                 def create_tool_func(tool_name):
                                     async def tool_func(**kwargs):
-                                        return await client.run_tool(tool_name, kwargs)
+                                        # Run the tool and ensure the result is properly awaited
+                                        result = await client.run_tool(tool_name, kwargs)
+                                        return result
                                     return tool_func
                                 
                                 # Get the parameter names from the input schema
@@ -265,7 +267,12 @@ class MultiModalAgent:
             result = await vision_tool.ainvoke(
                 {"image_path": local_image_path, "prompt": "What company logo is this?"}
             )
-            company_name = result.strip()
+            # Handle the result which might still be a coroutine
+            if hasattr(result, '__await__'):  # Check if result is awaitable
+                logger.info("Result is a coroutine, awaiting it")
+                result = await result
+            
+            company_name = result.strip() if result else "Unknown"
             logger.info(f"Detected logo/company: {company_name}")
             query = f"Provide detailed information about {company_name}. Include headquarters location, what they do, and their website."
             response = await self.agent.ainvoke(query)
