@@ -68,7 +68,7 @@ def search_company_info(company_name: str) -> Dict[str, Any]:
         return {"error": str(e), "company_name": company_name}
 
 
-@server.resource()
+@server.resource(uri="search-capabilities")
 def get_search_capabilities() -> List[str]:
     """Get information about the search capabilities"""
     return [
@@ -78,7 +78,7 @@ def get_search_capabilities() -> List[str]:
     ]
 
 
-@server.resource()
+@server.resource(uri="health")
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
     return {

@@ -122,7 +122,7 @@ def answer_question(question: str) -> str:
     return llm_processor.generate(prompt)
 
 
-@server.resource()
+@server.resource(uri="model-info")
 def get_model_info() -> Dict[str, Any]:
     """Get information about the loaded language model"""
     return {
@@ -133,7 +133,7 @@ def get_model_info() -> Dict[str, Any]:
     }
 
 
-@server.prompt()
+@server.prompt(name="react_agent_prompt")
 def react_agent_prompt() -> str:
     """Prompt template for ReAct agent reasoning"""
     return """
@@ -159,7 +159,7 @@ def react_agent_prompt() -> str:
     """
 
 
-@server.resource()
+@server.resource(uri="health")
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
     return {
