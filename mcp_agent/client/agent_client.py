@@ -120,22 +120,10 @@ class MultiModalAgent:
             # Create a new client for each connection attempt
             client = Client(sse_url)
             
-            # Use a simpler approach to avoid TaskGroup errors
-            # First initialize the client
-            await client.initialize()
-            
-            # Then list the tools directly
+            # Use the load_mcp_tools function but with a proper timeout and error handling
             try:
                 # Increase timeout to 30 seconds to allow for server startup
-                tools_result = await asyncio.wait_for(client.tools_list(), timeout=30.0)
-                tools = []
-                
-                # Process the tools result into BaseTool objects
-                if tools_result and hasattr(tools_result, 'tools'):
-                    for tool_info in tools_result.tools:
-                        tool = await client.create_tool(tool_info.name)
-                        if tool:
-                            tools.append(tool)
+                tools = await asyncio.wait_for(load_mcp_tools(client), timeout=30.0)
                 
                 if tools:
                     logger.info(
@@ -145,9 +133,11 @@ class MultiModalAgent:
                 else:
                     logger.warning(f"No tools found in {server_name}")
                     return []
-            finally:
-                # Always close the client properly
-                await client.close()
+            except Exception as inner_e:
+                logger.error(f"Error during tool loading from {server_name}: {str(inner_e)}")
+                if hasattr(inner_e, '__cause__') and inner_e.__cause__:
+                    logger.error(f"Caused by: {str(inner_e.__cause__)}")
+                raise
                 
         except asyncio.TimeoutError:
             logger.error(f"Timeout connecting to {server_name} after 30 seconds")
