@@ -9,10 +9,12 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Dict, Any
+import time
+from typing import Dict, Any, Optional
 
 import requests
 from fastmcp import Client
+import httpx
 
 # Configure logging
 logging.basicConfig(
@@ -34,6 +36,10 @@ logger.info(f"Connecting to Search Server at: {SEARCH_SERVER_URL}")
 
 class MultiModalAgent:
     """Multi-Modal Agent for analyzing logos and retrieving company information"""
+
+    def __init__(self):
+        self.max_retries = 2
+        self.retry_delay = 1  # seconds
 
     async def analyze_logo(self, image_path: str, is_url: bool = False) -> Dict[str, Any]:
         """Analyze a logo image and retrieve company information
@@ -67,34 +73,64 @@ class MultiModalAgent:
         logger.info(f"Image downloaded to: {local_path}")
         return local_path
     
+    async def _call_mcp_tool(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Optional[str]:
+        """Call an MCP tool with retry logic and proper error handling"""
+        for attempt in range(self.max_retries + 1):
+            try:
+                # Use a timeout to prevent hanging connections
+                timeout = httpx.Timeout(10.0, connect=5.0)
+                async with Client(f"{server_url}/sse", timeout=timeout) as client:
+                    # Use a shield to prevent cancellation from propagating
+                    result = await asyncio.shield(client.run_tool(tool_name, params))
+                    return result
+            except asyncio.CancelledError:
+                logger.warning(f"MCP call to {tool_name} was cancelled (attempt {attempt+1}/{self.max_retries+1})")
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.retry_delay)
+                else:
+                    logger.error(f"All attempts to call {tool_name} failed due to cancellation")
+                    return None
+            except Exception as e:
+                logger.error(f"Error calling {tool_name}: {str(e)} (attempt {attempt+1}/{self.max_retries+1})")
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.retry_delay)
+                else:
+                    logger.error(f"All attempts to call {tool_name} failed")
+                    return None
+
     async def _identify_logo(self, image_path: str) -> str:
         """Identify logo in image using Vision Server"""
         logger.info("Analyzing image with Vision Server")
-        try:
-            async with Client(f"{VISION_SERVER_URL}/sse") as vision_client:
-                result = await vision_client.run_tool(
-                    "analyze_image",
-                    {"image_path": image_path, "prompt": "What company logo is this?"}
-                )
-                company_name = result.strip() if result else "Unknown"
-                logger.info(f"Detected logo/company: {company_name}")
-                return company_name
-        except Exception as e:
-            logger.error(f"Error identifying logo: {str(e)}")
+        result = await self._call_mcp_tool(
+            VISION_SERVER_URL,
+            "analyze_image",
+            {"image_path": image_path, "prompt": "What company logo is this?"}
+        )
+        
+        if result:
+            company_name = result.strip()
+            logger.info(f"Detected logo/company: {company_name}")
+            return company_name
+        else:
+            logger.warning("Could not identify logo, using fallback")
             return "Unknown"
     
     async def _get_company_info(self, company_name: str) -> str:
         """Get company information using Search Server"""
         logger.info(f"Getting company info for: {company_name}")
-        try:
-            async with Client(f"{SEARCH_SERVER_URL}/sse") as search_client:
-                info_result = await search_client.run_tool(
-                    "search_company_info",
-                    {"company_name": company_name}
-                )
-                return info_result if isinstance(info_result, str) else str(info_result)
-        except Exception as e:
-            logger.error(f"Error getting company info: {str(e)}")
+        
+        if company_name == "Unknown":
+            return "No company information available as the logo could not be identified."
+            
+        result = await self._call_mcp_tool(
+            SEARCH_SERVER_URL,
+            "search_company_info",
+            {"company_name": company_name}
+        )
+        
+        if result:
+            return result if isinstance(result, str) else str(result)
+        else:
             return f"Could not retrieve information for {company_name}."
 
 
@@ -118,6 +154,12 @@ async def main():
             action="store_true", 
             help="Enable debug logging"
         )
+        parser.add_argument(
+            "--timeout", 
+            type=int, 
+            default=60,
+            help="Timeout in seconds for the entire operation"
+        )
         args = parser.parse_args()
 
         if args.debug:
@@ -130,13 +172,23 @@ async def main():
 
         print(f"🖼️ Analyzing image {'URL' if args.url else 'file'}: {args.image}")
         
-        # Use asyncio.shield to prevent TaskGroup cancellation from propagating
-        result = await asyncio.shield(agent.analyze_logo(args.image, is_url=args.url))
-
-        print(f"✅ Detected logo/company name: {result['detected_logo']}")
-        print("")
-        print("🎯 Company Information:")
-        print(f"{result['company_info']}")
+        # Set a timeout for the entire operation
+        try:
+            # Use asyncio.wait_for to set a timeout for the entire operation
+            result = await asyncio.wait_for(
+                agent.analyze_logo(args.image, is_url=args.url),
+                timeout=args.timeout
+            )
+            
+            print(f"✅ Detected logo/company name: {result['detected_logo']}")
+            print("")
+            print("🎯 Company Information:")
+            print(f"{result['company_info']}")
+            
+        except asyncio.TimeoutError:
+            logger.error(f"Operation timed out after {args.timeout} seconds")
+            print(f"\n❌ Error: Operation timed out after {args.timeout} seconds")
+            sys.exit(1)
 
     except asyncio.CancelledError:
         logger.error("Operation was cancelled")
