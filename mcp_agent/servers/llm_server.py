@@ -171,5 +171,5 @@ def health() -> dict:
 
 
 if __name__ == "__main__":
-    logger.info("Starting LLM MCP Server...")
-    server.run(host="0.0.0.0", port=8001)
+    logger.info("Starting LLM MCP Server with SSE transport...")
+    server.run(host="0.0.0.0", port=8001, transport="sse")

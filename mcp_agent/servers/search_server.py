@@ -89,5 +89,5 @@ def health() -> dict:
 
 
 if __name__ == "__main__":
-    logger.info("Starting Search MCP Server...")
-    server.run(host="0.0.0.0", port=8002)
+    logger.info("Starting Search MCP Server with SSE transport...")
+    server.run(host="0.0.0.0", port=8002, transport="sse")

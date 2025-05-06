@@ -217,37 +217,48 @@ class MultiModalAgent:
             Dict containing analysis results and company information
         """
         try:
-            if not os.path.exists(image_path):
-                raise FileNotFoundError(f"Image not found: {image_path}")
-
-            logger.info(f"Analyzing image: {image_path}")
-
-            # Connect to servers if not already connected
-            if not self.all_tools:
-                await self.connect_to_servers()
-
-            # Find the analyze_image tool
-            analyze_image_tool = None
+            # Use the vision server to analyze the logo image
+            vision_tool = None
             for tool in self.vision_tools:
                 if tool.name == "analyze_image":
-                    analyze_image_tool = tool
+                    vision_tool = tool
                     break
 
-            if not analyze_image_tool:
+            if not vision_tool:
                 raise ValueError("analyze_image tool not found in vision server")
 
-            # Analyze the image
-            result = await analyze_image_tool.ainvoke({"image_path": image_path})
-            logger.info(f"Detected logo/company: {result}")
+            # If it's a URL, download the image first
+            local_image_path = image_path
+            if is_url:
+                import requests
+                from pathlib import Path
+                
+                logger.info(f"Downloading image from URL: {image_path}")
+                response = requests.get(image_path, stream=True)
+                response.raise_for_status()
+                
+                # Create data directory if it doesn't exist
+                data_dir = Path("/app/data")
+                data_dir.mkdir(exist_ok=True)
+                
+                # Save the image to a local file
+                local_image_path = str(data_dir / "downloaded_logo.png")
+                with open(local_image_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                logger.info(f"Image downloaded to: {local_image_path}")
 
-            # Create the agent if not already created
-            if not self.agent:
-                await self.create_agent()
+            # Analyze the logo image
+            result = await vision_tool.ainvoke(
+                {"image_path": local_image_path, "prompt": "What company logo is this?"}
+            )
 
-            # Generate query for company information
-            query = f"Identify the company shown in the image as '{result}' and give me its details like name, headquarters, website, and what it does."
+            # Extract company name from the result
+            company_name = result.strip()
+            logger.info(f"Detected logo/company: {company_name}")
 
-            logger.info("Running agent to gather company information")
+            # Use the agent to get company information
+            query = f"Provide detailed information about {company_name}. Include headquarters location, what they do, and their website."
             response = await self.agent.ainvoke(query)
 
             return {"detected_logo": result, "company_info": response["output"]}
@@ -259,16 +270,37 @@ class MultiModalAgent:
 async def main():
     """Main function to run the multi-modal agent"""
     try:
-        image_path = "./logo1.png"
+        import argparse
+        
+        # Parse command-line arguments
+        parser = argparse.ArgumentParser(description="Multi-Modal Agent for Logo Analysis")
+        parser.add_argument(
+            "--image", 
+            type=str, 
+            default="./logo1.png",
+            help="Path to local image file or URL of logo image"
+        )
+        parser.add_argument(
+            "--url", 
+            action="store_true",
+            help="Flag to indicate the image parameter is a URL"
+        )
+        args = parser.parse_args()
+        
+        image_path = args.image
+        is_url = args.url
 
         print("🧠 Initializing Multi-Modal Agent...")
         agent = MultiModalAgent()
 
         print("🔌 Connecting to MCP servers...")
         await agent.connect_to_servers()
+        
+        if not agent.all_tools:
+            raise ValueError("Failed to connect to MCP servers. Check server status and network connectivity.")
 
-        print("🖼️ Analyzing image...")
-        result = await agent.analyze_logo(image_path)
+        print(f"🖼️ Analyzing {'image URL' if is_url else 'image file'}: {image_path}")
+        result = await agent.analyze_logo(image_path, is_url=is_url)
 
         if "error" in result and result["error"]:
             print(f"❌ Error: {result['error']}")
