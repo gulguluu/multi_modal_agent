@@ -11,6 +11,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from fastmcp import Client
+from fastmcp.client.transports import SSETransport
 from langchain.agents import AgentType, initialize_agent
 from langchain.tools import BaseTool
 from langchain_core.prompts import PromptTemplate
@@ -82,7 +83,10 @@ class MultiModalAgent:
             List of tools loaded from the server
         """
         try:
-            client = Client(server_url)
+            # Create SSE transport for the server URL
+            transport = SSETransport(url=f"{server_url}/sse")
+            client = Client(transport)
+            
             async with client:
                 tools = await load_mcp_tools(client)
                 logger.info(
@@ -113,7 +117,10 @@ class MultiModalAgent:
     async def _get_prompt_from_server(self):
         """Get the ReAct agent prompt from the LLM server"""
         try:
-            client = Client(LLM_SERVER_URL)
+            # Create SSE transport for the LLM server
+            transport = SSETransport(url=f"{LLM_SERVER_URL}/sse")
+            client = Client(transport)
+            
             async with client:
                 prompts = await client.list_prompts_mcp()
                 prompt_names = [p.name for p in prompts]
