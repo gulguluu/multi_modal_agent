@@ -11,7 +11,6 @@ import os
 from typing import Any, Dict, List, Optional
 
 from fastmcp import Client
-from fastmcp.transports.http import HttpTransport
 from langchain.agents import AgentType, initialize_agent
 from langchain.tools import BaseTool
 from langchain_core.prompts import PromptTemplate
