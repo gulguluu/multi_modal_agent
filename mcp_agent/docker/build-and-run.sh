@@ -16,15 +16,15 @@ else
 fi
 
 echo -e "${YELLOW}Building Docker images...${NC}"
-docker-compose build
+docker compose build
 
 echo -e "${YELLOW}Starting containers...${NC}"
-docker-compose up -d
+docker compose up -d
 echo -e "${YELLOW}Checking container status...${NC}"
 sleep 5
-docker-compose ps
+docker compose ps
 
 echo -e "${GREEN}=== Deployment complete ===${NC}"
-echo -e "${BLUE}To view logs:${NC} docker-compose logs -f"
-echo -e "${BLUE}To stop:${NC} docker-compose down"
-echo -e "${BLUE}To run the client:${NC} docker-compose run client"
+echo -e "${BLUE}To view logs:${NC} docker compose logs -f"
+echo -e "${BLUE}To stop:${NC} docker compose down"
+echo -e "${BLUE}To run the client:${NC} docker compose run client"

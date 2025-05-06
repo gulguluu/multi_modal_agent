@@ -124,8 +124,8 @@ class MultiModalAgent:
                     prompt_text = prompt_result.text
                     return PromptTemplate.from_template(prompt_text)
 
-                    # Fallback to default prompt
-                    return PromptTemplate.from_template(
+                # Fallback to default prompt
+                return PromptTemplate.from_template(
                         """
                     You are an intelligent agent that helps identify companies from logos and find detailed company information.
                     
