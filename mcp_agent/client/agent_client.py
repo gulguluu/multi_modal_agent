@@ -118,7 +118,32 @@ class MultiModalAgent:
             client = Client(sse_url)
             async with client:
                 try:
-                    tools = await asyncio.wait_for(load_mcp_tools(client), timeout=30.0)
+                    # Increase timeout to 30 seconds to allow for server startup
+                    try:
+                        # First try the standard way that expects an object with .tools attribute
+                        tools = await asyncio.wait_for(load_mcp_tools(client), timeout=30.0)
+                    except AttributeError as attr_err:
+                        if "'list' object has no attribute 'tools'" in str(attr_err):
+                            # Direct approach - get tools list directly
+                            logger.info(f"Using fallback method to load tools from {server_name}")
+                            response = await client.list_tools()
+                            from langchain.tools import Tool
+                            tools = []
+                            for tool_spec in response:
+                                # Create a closure to capture the tool name
+                                def create_tool_func(tool_name):
+                                    async def tool_func(**kwargs):
+                                        return await client.run_tool(tool_name, kwargs)
+                                    return tool_func
+                                
+                                tool = Tool(
+                                    name=tool_spec.name,
+                                    description=tool_spec.description,
+                                    func=create_tool_func(tool_spec.name),
+                                )
+                                tools.append(tool)
+                        else:
+                            raise
                     
                     if tools:
                         logger.info(
