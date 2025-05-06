@@ -46,28 +46,59 @@ class MultiModalAgent:
         self.all_tools = []
         self.agent = None
 
-    async def connect_to_servers(self):
-        """Connect to all MCP servers and load tools"""
+    async def connect_to_servers(self, max_retries=5, retry_delay=5):
+        """Connect to all MCP servers and load tools
+        
+        Args:
+            max_retries: Maximum number of connection retry attempts
+            retry_delay: Delay in seconds between retry attempts
+        """
         logger.info("Connecting to MCP servers...")
-        self.vision_tools = await self._load_tools_from_server(
-            VISION_SERVER_URL, "Vision Server"
+        
+        # Try to connect to servers with retries
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"Connection attempt {attempt}/{max_retries}...")
+                
+                # Try to connect to all servers
+                vision_tools = await self._load_tools_from_server(VISION_SERVER_URL, "Vision Server")
+                llm_tools = await self._load_tools_from_server(LLM_SERVER_URL, "LLM Server")
+                search_tools = await self._load_tools_from_server(SEARCH_SERVER_URL, "Search Server")
+                
+                # If we got here, we connected successfully
+                self.vision_tools = vision_tools
+                self.llm_tools = llm_tools
+                self.search_tools = search_tools
+                
+                # Combine all tools
+                self.all_tools = []
+                if self.vision_tools:
+                    self.all_tools.extend(self.vision_tools)
+                if self.search_tools:
+                    self.all_tools.extend(self.search_tools)
+                
+                if self.all_tools:
+                    logger.info(f"Successfully connected on attempt {attempt}")
+                    logger.info(f"Loaded {len(self.all_tools)} tools from MCP servers")
+                    return
+                
+                logger.warning(f"Connected to servers but no tools were loaded. Retrying...")
+            except Exception as e:
+                logger.warning(f"Connection attempt {attempt} failed: {str(e)}")
+            
+            # If we've reached the max retries, give up
+            if attempt >= max_retries:
+                break
+                
+            # Wait before retrying
+            logger.info(f"Waiting {retry_delay} seconds before next attempt...")
+            await asyncio.sleep(retry_delay)
+        
+        # If we get here, we failed to connect after all retries
+        raise ValueError(
+            "Failed to load any tools from MCP servers after multiple attempts. "
+            "Check server status and connectivity."
         )
-        self.llm_tools = await self._load_tools_from_server(
-            LLM_SERVER_URL, "LLM Server"
-        )
-        self.search_tools = await self._load_tools_from_server(
-            SEARCH_SERVER_URL, "Search Server"
-        )
-        self.all_tools = []
-        if self.vision_tools:
-            self.all_tools.extend(self.vision_tools)
-        if self.search_tools:
-            self.all_tools.extend(self.search_tools)
-        if not self.all_tools:
-            raise ValueError(
-                "Failed to load any tools from MCP servers. Check server status and connectivity."
-            )
-        logger.info(f"Loaded {len(self.all_tools)} tools from MCP servers")
 
     async def _load_tools_from_server(
         self, server_url: str, server_name: str
@@ -81,14 +112,32 @@ class MultiModalAgent:
         Returns:
             List of tools loaded from the server
         """
-        sse_url = f"{server_url}/sse"
-        client = Client(sse_url)
-        async with client:
-            tools = await asyncio.wait_for(load_mcp_tools(client), timeout=10.0)
-            logger.info(
-                f"Loaded {len(tools)} tools from {server_name}: {[t.name for t in tools]}"
-            )
-            return tools
+        try:
+            # Explicitly use the /sse endpoint
+            sse_url = f"{server_url}/sse"
+            logger.info(f"Connecting to {server_name} at {sse_url}")
+            
+            # Create client with longer timeout
+            client = Client(sse_url)
+            
+            async with client:
+                # Increase timeout to 30 seconds to allow for server startup
+                tools = await asyncio.wait_for(load_mcp_tools(client), timeout=30.0)
+                
+                if tools:
+                    logger.info(
+                        f"Successfully loaded {len(tools)} tools from {server_name}: {[t.name for t in tools]}"
+                    )
+                    return tools
+                else:
+                    logger.warning(f"No tools found in {server_name}")
+                    return []
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout connecting to {server_name} after 30 seconds")
+            raise ValueError(f"Timeout connecting to {server_name}")
+        except Exception as e:
+            logger.error(f"Error connecting to {server_name}: {str(e)}")
+            raise ValueError(f"Failed to connect to {server_name}: {str(e)}")
 
     async def _get_llm_chain(self):
         """Create a chain using the LLM server's generate_text tool"""
@@ -190,42 +239,83 @@ class MultiModalAgent:
 async def main():
     """Main function to run the multi-modal agent"""
     try:
-        parser = argparse.ArgumentParser(
-            description="Multi-Modal Agent for Logo Analysis"
-        )
+        parser = argparse.ArgumentParser(description="Multi-Modal Agent for Logo Analysis")
         parser.add_argument(
-            "--image",
-            type=str,
+            "--image", 
+            type=str, 
             default="./logo1.png",
-            help="Path to local image file or URL of logo image",
+            help="Path to local image file or URL of logo image"
         )
         parser.add_argument(
-            "--url",
+            "--url", 
             action="store_true",
-            help="Flag to indicate the image parameter is a URL",
+            help="Flag to indicate the image parameter is a URL"
+        )
+        parser.add_argument(
+            "--debug", 
+            action="store_true",
+            help="Enable debug mode with more detailed logging"
         )
         args = parser.parse_args()
+        
+        # Set debug logging if requested
+        if args.debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+            logging.getLogger('mcp').setLevel(logging.DEBUG)
+        
         image_path = args.image
         is_url = args.url
+
         print("🧠 Initializing Multi-Modal Agent...")
         agent = MultiModalAgent()
 
         print("🔌 Connecting to MCP servers...")
-        await agent.connect_to_servers()
+        try:
+            # Use longer retry delay and more retries for initial startup
+            await agent.connect_to_servers(max_retries=10, retry_delay=10)
+        except Exception as conn_err:
+            logger.error(f"Connection error: {str(conn_err)}")
+            print(f"❌ Connection error: {str(conn_err)}")
+            # Print more detailed error information
+            if hasattr(conn_err, '__cause__') and conn_err.__cause__:
+                logger.error(f"Caused by: {str(conn_err.__cause__)}")
+                print(f"  Caused by: {str(conn_err.__cause__)}")
+            return
+        
         if not agent.all_tools:
-            raise ValueError(
-                "Failed to connect to MCP servers. Check server status and network connectivity."
-            )
+            print("❌ Error: No tools loaded from MCP servers. Check server status and network connectivity.")
+            return
+
         print(f"🖼️ Analyzing {'image URL' if is_url else 'image file'}: {image_path}")
-        result = await agent.analyze_logo(image_path, is_url=is_url)
-        if "error" in result and result["error"]:
-            print(f"❌ Error: {result['error']}")
-        else:
-            print("✅ Detected logo/company name:", result["detected_logo"])
-            print("\n🎯 Final Answer:\n", result["company_info"])
+        try:
+            result = await agent.analyze_logo(image_path, is_url=is_url)
+            
+            if "error" in result and result["error"]:
+                print(f"❌ Error: {result['error']}")
+            else:
+                print("✅ Detected logo/company name:", result["detected_logo"])
+                print("\n🎯 Final Answer:\n", result["company_info"])
+        except Exception as analyze_err:
+            logger.error(f"Error analyzing logo: {str(analyze_err)}")
+            print(f"❌ Error analyzing logo: {str(analyze_err)}")
+            # Print more detailed error information
+            if hasattr(analyze_err, '__cause__') and analyze_err.__cause__:
+                logger.error(f"Caused by: {str(analyze_err.__cause__)}")
+                print(f"  Caused by: {str(analyze_err.__cause__)}")
+
     except Exception as e:
         logger.error(f"Error in main execution: {str(e)}")
-        print(f"Error: {str(e)}")
+        print(f"❌ Error: {str(e)}")
+        # Print more detailed error information
+        if hasattr(e, '__cause__') and e.__cause__:
+            logger.error(f"Caused by: {str(e.__cause__)}")
+            print(f"  Caused by: {str(e.__cause__)}")
+        # Print traceback for debugging
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        if args.debug:
+            print("\nTraceback:")
+            print(traceback.format_exc())
 
 
 if __name__ == "__main__":
