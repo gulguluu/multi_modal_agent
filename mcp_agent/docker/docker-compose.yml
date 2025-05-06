@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.vision
+    pull_policy: never
     image: mcp-vision-server:latest
     container_name: mcp-vision-server
     ports:
@@ -29,6 +30,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.llm
+    pull_policy: never
     image: mcp-llm-server:latest
     container_name: mcp-llm-server
     ports:
@@ -56,6 +58,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.search
+    pull_policy: never
     image: mcp-search-server:latest
     container_name: mcp-search-server
     ports:
@@ -72,6 +75,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.client
+    pull_policy: never
     image: mcp-client:latest
     container_name: mcp-client
     depends_on:
