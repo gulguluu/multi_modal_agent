@@ -88,7 +88,6 @@ class LLMProcessor:
             return f"Error generating text: {str(e)}"
 
 
-# Create a singleton instance
 llm_processor = LLMProcessor()
 
 
@@ -122,7 +121,6 @@ def answer_question(question: str) -> str:
     return llm_processor.generate(prompt)
 
 
-# Removed resource decorator to use default behavior
 def get_model_info() -> Dict[str, Any]:
     """Get information about the loaded language model"""
     return {
@@ -133,7 +131,6 @@ def get_model_info() -> Dict[str, Any]:
     }
 
 
-# Using simple function instead of prompt decorator
 def react_agent_prompt() -> str:
     """Prompt template for ReAct agent reasoning"""
     return """
@@ -159,14 +156,19 @@ def react_agent_prompt() -> str:
     """
 
 
-# Removed resource decorator to use default behavior
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
+    model_loaded = hasattr(llm_processor, "model") and llm_processor.model is not None
+    test_message = (
+        "Model loaded and ready" if model_loaded else "Model not loaded properly"
+    )
     return {
-        "status": "healthy",
+        "status": "healthy" if model_loaded else "unhealthy",
         "server": "llm",
         "model": llm_processor.model_id,
         "device": llm_processor.device,
+        "test": test_message,
+        "hello": "world",
     }
 
 

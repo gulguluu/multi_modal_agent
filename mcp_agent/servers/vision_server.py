@@ -118,7 +118,6 @@ def analyze_image(
     return analyzer.analyze(image_path, prompt)
 
 
-# Removed resource decorator to use default behavior
 def get_model_info() -> dict:
     """Get information about the loaded vision model"""
     return {
@@ -128,14 +127,20 @@ def get_model_info() -> dict:
     }
 
 
-# Removed resource decorator to use default behavior
 def health() -> dict:
     """Health check endpoint for Docker healthchecks"""
+    model_loaded = hasattr(analyzer, "model") and analyzer.model is not None
+    test_message = (
+        "Model loaded and ready" if model_loaded else "Model not loaded properly"
+    )
+
     return {
-        "status": "healthy",
+        "status": "healthy" if model_loaded else "unhealthy",
         "server": "vision",
         "model": "Qwen/Qwen2.5-VL-3B-Instruct",
         "device": analyzer.device,
+        "test": test_message,
+        "hello": "world",
     }
 
 
