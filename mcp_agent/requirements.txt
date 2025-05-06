@@ -8,7 +8,7 @@ langchain-core>0.1.0
 langchain-community>0.0.10
 
 # MCP dependencies
-fastmcp>2.0.0
+fastmcp==2.0.1
 langchain-mcp-adapters==0.0.10
 
 # Tools and utilities

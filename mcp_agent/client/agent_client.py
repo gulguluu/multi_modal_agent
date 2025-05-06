@@ -10,8 +10,8 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from fastmcp import ClientSession, HttpServerParameters
-from fastmcp.client.http import http_client
+from fastmcp import Client
+from fastmcp.transports.http import HttpTransport
 from langchain.agents import AgentType, initialize_agent
 from langchain.tools import BaseTool
 from langchain_core.prompts import PromptTemplate
@@ -24,19 +24,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Server configurations - read from environment variables with fallbacks
-VISION_SERVER = HttpServerParameters(
-    url=os.environ.get("VISION_SERVER_URL", "http://localhost:8000")
-)
-LLM_SERVER = HttpServerParameters(
-    url=os.environ.get("LLM_SERVER_URL", "http://localhost:8001")
-)
-SEARCH_SERVER = HttpServerParameters(
-    url=os.environ.get("SEARCH_SERVER_URL", "http://localhost:8002")
-)
+VISION_SERVER_URL = os.environ.get("VISION_SERVER_URL", "http://localhost:8000")
+LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://localhost:8001")
+SEARCH_SERVER_URL = os.environ.get("SEARCH_SERVER_URL", "http://localhost:8002")
 
-logger.info(f"Connecting to Vision Server at: {VISION_SERVER.url}")
-logger.info(f"Connecting to LLM Server at: {LLM_SERVER.url}")
-logger.info(f"Connecting to Search Server at: {SEARCH_SERVER.url}")
+logger.info(f"Connecting to Vision Server at: {VISION_SERVER_URL}")
+logger.info(f"Connecting to LLM Server at: {LLM_SERVER_URL}")
+logger.info(f"Connecting to Search Server at: {SEARCH_SERVER_URL}")
 
 
 class MultiModalAgent:
@@ -56,15 +50,15 @@ class MultiModalAgent:
 
         # Connect to vision server
         self.vision_tools = await self._load_tools_from_server(
-            VISION_SERVER, "Vision Server"
+            VISION_SERVER_URL, "Vision Server"
         )
 
         # Connect to LLM server
-        self.llm_tools = await self._load_tools_from_server(LLM_SERVER, "LLM Server")
+        self.llm_tools = await self._load_tools_from_server(LLM_SERVER_URL, "LLM Server")
 
         # Connect to search server
         self.search_tools = await self._load_tools_from_server(
-            SEARCH_SERVER, "Search Server"
+            SEARCH_SERVER_URL, "Search Server"
         )
 
         # Combine all tools
@@ -77,26 +71,25 @@ class MultiModalAgent:
         logger.info(f"Loaded {len(self.all_tools)} tools from MCP servers")
 
     async def _load_tools_from_server(
-        self, server_params: HttpServerParameters, server_name: str
+        self, server_url: str, server_name: str
     ) -> List[BaseTool]:
         """Load tools from a specific MCP server
 
         Args:
-            server_params: Server connection parameters
+            server_url: URL of the MCP server
             server_name: Name of the server for logging
 
         Returns:
             List of tools loaded from the server
         """
         try:
-            async with http_client(server_params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    tools = await load_mcp_tools(session)
-                    logger.info(
-                        f"Loaded {len(tools)} tools from {server_name}: {[t.name for t in tools]}"
-                    )
-                    return tools
+            client = Client(server_url)
+            async with client:
+                tools = await load_mcp_tools(client)
+                logger.info(
+                    f"Loaded {len(tools)} tools from {server_name}: {[t.name for t in tools]}"
+                )
+                return tools
         except Exception as e:
             logger.error(f"Error connecting to {server_name}: {str(e)}")
             return []
@@ -121,14 +114,15 @@ class MultiModalAgent:
     async def _get_prompt_from_server(self):
         """Get the ReAct agent prompt from the LLM server"""
         try:
-            async with http_client(LLM_SERVER) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    prompts = await session.list_prompts()
+            client = Client(LLM_SERVER_URL)
+            async with client:
+                prompts = await client.list_prompts_mcp()
+                prompt_names = [p.name for p in prompts]
 
-                    if "react_agent_prompt" in prompts:
-                        prompt_text = await session.get_prompt("react_agent_prompt")
-                        return PromptTemplate.from_template(prompt_text)
+                if "react_agent_prompt" in prompt_names:
+                    prompt_result = await client.get_prompt("react_agent_prompt")
+                    prompt_text = prompt_result.text
+                    return PromptTemplate.from_template(prompt_text)
 
                     # Fallback to default prompt
                     return PromptTemplate.from_template(
