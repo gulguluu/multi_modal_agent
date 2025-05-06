@@ -127,7 +127,7 @@ class MultiModalAgent:
                             # Direct approach - get tools list directly
                             logger.info(f"Using fallback method to load tools from {server_name}")
                             response = await client.list_tools()
-                            from langchain.tools import Tool
+                            from langchain.tools import StructuredTool
                             tools = []
                             for tool_spec in response:
                                 # Create a closure to capture the tool name
@@ -136,10 +136,20 @@ class MultiModalAgent:
                                         return await client.run_tool(tool_name, kwargs)
                                     return tool_func
                                 
-                                tool = Tool(
+                                # Get the parameter names from the input schema
+                                param_names = []
+                                if hasattr(tool_spec, 'inputSchema') and tool_spec.inputSchema:
+                                    if 'properties' in tool_spec.inputSchema:
+                                        param_names = list(tool_spec.inputSchema['properties'].keys())
+                                
+                                logger.info(f"Creating structured tool {tool_spec.name} with parameters: {param_names}")
+                                
+                                # Use StructuredTool for multi-parameter tools
+                                tool = StructuredTool(
                                     name=tool_spec.name,
                                     description=tool_spec.description,
                                     func=create_tool_func(tool_spec.name),
+                                    args_schema=tool_spec.inputSchema if hasattr(tool_spec, 'inputSchema') else None
                                 )
                                 tools.append(tool)
                         else:
