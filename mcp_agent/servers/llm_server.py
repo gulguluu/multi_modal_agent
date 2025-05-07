@@ -38,9 +38,22 @@ class LLMProcessor:
         try:
             logger.info(f"Loading language model: {model_id}")
             self.model_id = model_id
-            self.tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+            
+            # Ensure model is downloaded properly with progress bar
+            logger.info("Downloading and preparing tokenizer...")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_id, 
+                use_fast=True,
+                trust_remote_code=True,
+                cache_dir="/app/.cache/huggingface",
+            )
+            
+            logger.info("Tokenizer loaded, now loading model...")
             self.model = AutoModelForCausalLM.from_pretrained(
-                model_id, torch_dtype=torch.float16
+                model_id, 
+                torch_dtype=torch.float16,
+                trust_remote_code=True,
+                cache_dir="/app/.cache/huggingface",
             )
 
             self.device = device or ("xpu" if torch.xpu.is_available() else "cpu")

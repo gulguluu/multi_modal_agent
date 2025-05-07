@@ -28,7 +28,7 @@ class ImageAnalyzer:
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen2.5-VL-3B-Instruct",
+        model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct",
         device: Optional[str] = None,
     ):
         """Initialize the image analyzer with the specified model.
@@ -39,9 +39,19 @@ class ImageAnalyzer:
         """
         try:
             logger.info(f"Loading vision model: {model_name}")
-            self.processor = AutoProcessor.from_pretrained(model_name)
+            # Ensure model is downloaded properly with progress bar
+            logger.info("Downloading and preparing model files...")
+            self.processor = AutoProcessor.from_pretrained(
+                model_name,
+                trust_remote_code=True,
+                cache_dir="/app/.cache/huggingface",
+            )
+            logger.info("Processor loaded, now loading model...")
             self.model = AutoModelForImageTextToText.from_pretrained(
-                model_name, torch_dtype=torch.bfloat16
+                model_name, 
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True,
+                cache_dir="/app/.cache/huggingface",
             )
             self.device = device or ("xpu" if torch.xpu.is_available() else "cpu")
             logger.info(f"Using device: {self.device} for vision model")

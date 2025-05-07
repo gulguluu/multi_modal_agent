@@ -10,7 +10,7 @@ services:
       - "8000:8000"
     volumes:
       - ../data:/app/data  # For image files
-      - vision-cache:/app/.cache  # For model cache
+      - vision-cache:/app/.cache/huggingface  # For model cache
     privileged: true
     devices:
       - /dev/dri:/dev/dri
@@ -18,6 +18,9 @@ services:
       - IPEX_OPTIMIZE=1
       - IPEX_MERGE_FUSION=1
       - IPEX_AUTO_TUNE=1
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - HF_HOME=/app/.cache/huggingface
+      - HF_HUB_CACHE=/app/.cache/huggingface
     restart: unless-stopped
     networks:
       - mcp-network
@@ -32,8 +35,7 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - llm-cache:/app/.cache  # For model cache
-      - llm-models:/app/models  # For model files
+      - llm-cache:/app/.cache/huggingface  # For model cache
     privileged: true
     devices:
       - /dev/dri:/dev/dri
@@ -41,8 +43,9 @@ services:
       - IPEX_OPTIMIZE=1
       - IPEX_MERGE_FUSION=1
       - IPEX_AUTO_TUNE=1
-      - TRANSFORMERS_CACHE=/app/models
-      - HUGGINGFACE_CACHE_DIR=/app/models
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - HF_HOME=/app/.cache/huggingface
+      - HF_HUB_CACHE=/app/.cache/huggingface
     restart: unless-stopped
     networks:
       - mcp-network
@@ -84,7 +87,6 @@ services:
 volumes:
   vision-cache:
   llm-cache:
-  llm-models:
 
 networks:
   mcp-network:
