@@ -44,14 +44,14 @@ class ImageAnalyzer:
             self.processor = AutoProcessor.from_pretrained(
                 model_name,
                 trust_remote_code=True,
-                cache_dir="/app/.cache/huggingface",
+                #cache_dir="/app/.cache/huggingface",
             )
             logger.info("Processor loaded, now loading model...")
             self.model = AutoModelForImageTextToText.from_pretrained(
                 model_name, 
                 torch_dtype=torch.bfloat16,
                 trust_remote_code=True,
-                cache_dir="/app/.cache/huggingface",
+                #cache_dir="/app/.cache/huggingface",
             )
             self.device = device or ("xpu" if torch.xpu.is_available() else "cpu")
             logger.info(f"Using device: {self.device} for vision model")

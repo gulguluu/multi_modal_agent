@@ -45,7 +45,7 @@ class LLMProcessor:
                 model_id, 
                 use_fast=True,
                 trust_remote_code=True,
-                cache_dir="/app/.cache/huggingface",
+                #cache_dir="/app/.cache/huggingface",
             )
             
             logger.info("Tokenizer loaded, now loading model...")
@@ -53,7 +53,7 @@ class LLMProcessor:
                 model_id, 
                 torch_dtype=torch.float16,
                 trust_remote_code=True,
-                cache_dir="/app/.cache/huggingface",
+                #cache_dir="/app/.cache/huggingface",
             )
 
             self.device = device or ("xpu" if torch.xpu.is_available() else "cpu")
