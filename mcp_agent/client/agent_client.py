@@ -9,7 +9,6 @@ import logging
 import os
 from pathlib import Path
 import socket
-import subprocess
 import sys
 import time
 from typing import Dict, Any, Optional
@@ -123,7 +122,7 @@ class MultiModalAgent:
     
 
     
-    async def _call_mcp_tool(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Optional[str]:
+    async def _call_mcp_tool(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Optional[Any]:
         """Call an MCP tool with retry logic and proper error handling"""
         # Extract hostname and port from server_url for diagnostics
         hostname = server_url.replace('http://', '').split(':')[0]
@@ -174,7 +173,7 @@ class MultiModalAgent:
         logger.error(f"All attempts to call {tool_name} failed")
         return None
     
-    async def _run_tool_call(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> str:
+    async def _run_tool_call(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Any:
         """Run a single tool call without using TaskGroups to avoid cancellation issues"""
         # Create the client
         client = Client(f"{server_url}/sse")
@@ -184,6 +183,13 @@ class MultiModalAgent:
             async with client:
                 # Call the tool
                 result = await client.call_tool(tool_name, params)
+                
+                # Print raw response for debugging
+                logger.info(f"Raw response from {tool_name}:")
+                logger.info(f"Response type: {type(result)}")
+                logger.info(f"Response attributes: {dir(result)}")
+                logger.info(f"Response repr: {repr(result)}")
+                
                 return result
         except Exception as e:
             logger.error(f"Error calling {tool_name}: {str(e)}")
@@ -200,12 +206,40 @@ class MultiModalAgent:
         )
         
         if result:
-            company_name = result.strip()
-            logger.info(f"Detected logo/company: {company_name}")
-            return company_name
-        else:
-            logger.warning("Could not identify logo, using fallback")
-            return "Unknown"
+            # Print raw result for debugging
+            print("\n==== RAW VISION SERVER RESPONSE ====")
+            print(f"Type: {type(result)}")
+            if hasattr(result, '__dict__'):
+                print(f"Dict representation: {result.__dict__}")
+            print(f"String representation: {str(result)}")
+            print("===================================\n")
+            
+            # Handle structured response from FastMCP 2.0.0
+            try:
+                if hasattr(result, 'content') and result.content:
+                    # If result has content attribute with text items
+                    for item in result.content:
+                        if item.get('type') == 'text':
+                            company_name = item.get('text', '')
+                            if company_name:
+                                logger.info(f"Detected logo/company: {company_name}")
+                                return company_name
+                elif hasattr(result, 'result'):
+                    # If result has a result attribute
+                    company_name = str(result.result)
+                    logger.info(f"Detected logo/company: {company_name}")
+                    return company_name
+                else:
+                    # Fallback to string conversion
+                    company_name = str(result)
+                    logger.info(f"Detected logo/company: {company_name}")
+                    return company_name
+            except Exception as e:
+                logger.error(f"Error extracting company name from result: {str(e)}")
+                logger.debug(f"Raw result: {result}")
+        
+        logger.warning("Could not identify logo, using fallback")
+        return "Unknown"
     
     async def _get_company_info(self, company_name: str) -> str:
         """Get company information using Search Server"""
@@ -221,9 +255,40 @@ class MultiModalAgent:
         )
         
         if result:
-            return result if isinstance(result, str) else str(result)
+            # Print raw result for debugging
+            print("\n==== RAW SEARCH SERVER RESPONSE ====")
+            print(f"Type: {type(result)}")
+            if hasattr(result, '__dict__'):
+                print(f"Dict representation: {result.__dict__}")
+            print(f"String representation: {str(result)}")
+            print("===================================\n")
+            
+            # Handle structured response from FastMCP 2.0.0
+            try:
+                if hasattr(result, 'content') and result.content:
+                    # If result has content attribute with text items
+                    for item in result.content:
+                        if item.get('type') == 'text':
+                            return item.get('text', f"No information found for {company_name}.")
+                elif hasattr(result, 'result'):
+                    # If result has a result attribute
+                    return str(result.result)
+                else:
+                    # Fallback to string conversion
+                    return str(result)
+            except Exception as e:
+                logger.error(f"Error extracting company info from result: {str(e)}")
+                logger.debug(f"Raw result: {result}")
+                return f"Error retrieving information for {company_name}."
         else:
-            return f"Could not retrieve information for {company_name}."
+            return f"No information found for {company_name}."
+    
+
+
+
+
+    
+
 
 
 async def main():
@@ -295,10 +360,13 @@ async def main():
 if __name__ == "__main__":
     # Use a more robust asyncio run approach
     try:
-        asyncio.run(main())
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        exit_code = asyncio.run(main())
+        sys.exit(exit_code)
     except KeyboardInterrupt:
-        print("\n⚠️ Operation interrupted by user")
-        sys.exit(0)
+        print("\n🛑 Operation cancelled by user")
+        sys.exit(130)
     except Exception as e:
         print(f"\n❌ Fatal error: {str(e)}")
         sys.exit(1)
