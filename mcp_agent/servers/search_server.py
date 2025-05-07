@@ -40,80 +40,84 @@ def search_web(query: str) -> str:
 
 
 @server.tool()
-def search_company_info(company_name: str) -> str:
+def search_recipes(ingredients: str) -> str:
     """
-    Search for information about a company.
+    Search for recipes based on provided ingredients.
 
     Args:
-        company_name: Name of the company to search for
+        ingredients: List of ingredients to search recipes for
 
     Returns:
-        JSON string with company information
+        JSON string with recipe information
     """
     try:
-        if "system" in company_name and "assistant" in company_name:
-            if "assistant" in company_name:
-                parts = company_name.split("assistant")
-                if len(parts) > 1:
-                    company_name = parts[1].strip()
-                    if company_name.startswith(":"):
-                        company_name = company_name[1:].strip()
-                    if "." in company_name:
-                        company_name = company_name.split(".")[0].strip()
+        # Simple ingredient processing - trust the vision model output
+        if isinstance(ingredients, str):
+            # If it looks like a JSON array, try to parse it
+            if ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
+                try:
+                    ingredients_list = json.loads(ingredients)
+                    if isinstance(ingredients_list, list):
+                        ingredients = ", ".join(ingredients_list)
+                except json.JSONDecodeError:
+                    # Not valid JSON, just use as text
+                    logger.info(f"Using raw text from vision model: {ingredients}")
+                    # Simple cleanup - remove brackets if they exist
+                    ingredients = ingredients.strip('[]').replace('"', '').replace('\'', '')
+            
+        # Limit length for very long inputs
+        if len(ingredients) > 200:
+            ingredients = ingredients[:200]
         
-        if len(company_name) > 50:
-            company_name = " ".join(company_name.split()[:3])
-        
-        # Handle case where logo couldn't be identified
-        if company_name.lower() == "unknown logo" or company_name.lower() == "none":
+        # If no ingredients, just return empty result
+        if not ingredients or ingredients.lower() in ["[]", "none", "unknown", "no ingredients"]:
+            logger.warning(f"No ingredients found in: {ingredients}")
             return json.dumps({
-                "company_name": company_name,
-                "headquarters_info": "Could not identify the logo with confidence",
-                "website_info": "",
-                "about_info": "The logo could not be identified with confidence. Please try a clearer image."
+                "ingredients": [],
+                "recipes": [],
+                "error": "No ingredients were identified. Please try with a clearer image of food items."
             }, indent=2)
             
-        # Construct a more comprehensive search query for any company
-        query = f"{company_name} company official information headquarters website"
+        # Construct a search query for recipes
+        query = f"recipes with {ingredients} easy homemade"
         
-        logger.info(f"Searching for company: {company_name} with query: {query}")
-        # Search the web
-        search_results = search_tool.run(query)
-        headquarters_info = "No information found"
-        website_info = ""
-        about_info = ""
+        logger.info(f"Searching for recipes with ingredients: {ingredients}")
+        # Use the search_web function to avoid duplicating search logic
+        search_results = search_web(query)
+        
+        # Process search results
+        recipes = []
         if search_results and len(search_results) > 100:
-            if "headquarters" in search_results.lower():
-                sentences = search_results.split(".")
-                for sentence in sentences:
-                    if "headquarters" in sentence.lower():
-                        headquarters_info = sentence.strip() + "."
-                        break
-            else:
-                headquarters_info = search_results[:200]
-            if "www." in search_results or "http" in search_results:
-                import re
-                urls = re.findall(r'(https?://[\w\.-]+|www\.[\w\.-]+)', search_results)
-                if urls:
-                    website_info = urls[0]
-            about_info = search_results[:300] if len(search_results) > 300 else search_results
+            # Extract recipe names
+            lines = search_results.split('\n')
+            for line in lines:
+                if 'recipe' in line.lower() or any(food in line.lower() for food in ['dish', 'meal', 'cook', 'bake']):
+                    recipes.append(line.strip())
+            
+            # Limit to top 5 recipes
+            recipes = recipes[:5] if len(recipes) > 5 else recipes
+        
         result = {
-            "company_name": company_name,
-            "headquarters_info": headquarters_info,
-            "website_info": website_info,
-            "about_info": about_info
+            "ingredients": ingredients,
+            "search_query": query,
+            "recipes": recipes,
+            "full_results": search_results[:1000] if len(search_results) > 1000 else search_results
         }
         return json.dumps(result, indent=2)
     except Exception as e:
-        logger.error(f"Error searching for company info: {str(e)}")
-        return json.dumps({"error": str(e), "company_name": company_name})
+        logger.error(f"Error searching for recipes: {str(e)}")
+        return json.dumps({
+            "ingredients": ingredients if isinstance(ingredients, str) else str(ingredients),
+            "recipes": [],
+            "error": f"Error searching for recipes: {str(e)}"
+        }, indent=2)
 
 
 def get_search_capabilities() -> List[str]:
     """Get information about the search capabilities"""
     return [
         "Web search using DuckDuckGo",
-        "Company information search",
+        "Recipe search",
         "No API key required",
     ]
 

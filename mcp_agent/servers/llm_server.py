@@ -115,22 +115,77 @@ def generate_text(prompt: str, max_tokens: int = 256) -> str:
     Returns:
         Generated text response
     """
-    return llm_processor.generate(prompt, max_tokens)
+    try:
+        return llm_processor.generate(prompt, max_tokens)
+    except Exception as e:
+        logger.error(f"Error in generate_text: {str(e)}")
+        return f"Error generating text: {str(e)}"
 
 
 @server.tool()
-def answer_question(question: str) -> str:
+def generate_recipe(ingredients: str, search_results: str = "", max_tokens: int = 512) -> str:
     """
-    Answer a question using the local LLM.
+    Generate a recipe based on provided ingredients and optional search results.
 
     Args:
-        question: The question to answer
+        ingredients: List of ingredients available for the recipe
+        search_results: Optional search results about recipes with these ingredients
+        max_tokens: Maximum number of tokens to generate
 
     Returns:
-        Answer to the question
+        Formatted recipe with name, ingredients, instructions, and cooking time
     """
-    prompt = f"Please answer the following question accurately and concisely:\n\nQuestion: {question}\n\nAnswer:"
-    return llm_processor.generate(prompt, max_tokens=128)  # Using fewer tokens for concise answers
+    try:
+        logger.info(f"Generating recipe for ingredients: {ingredients}")
+        
+        # Clean up ingredients input if it's a JSON string
+        if isinstance(ingredients, str) and ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
+            try:
+                import json
+                ingredients_list = json.loads(ingredients)
+                if isinstance(ingredients_list, list):
+                    ingredients = ", ".join(ingredients_list)
+            except json.JSONDecodeError:
+                # Not valid JSON, use as is
+                pass
+        
+        # Construct a recipe generation prompt
+        if search_results and len(search_results) > 10:
+            prompt = f"""
+            Based on these ingredients: {ingredients}
+            And these recipe search results: 
+            {search_results[:2000]}
+            
+            Create a delicious recipe that primarily uses these ingredients. Format your response as follows:
+            1. Recipe name (bold)
+            2. Brief description
+            3. Ingredients list (bullet points)
+            4. Simple step-by-step instructions (numbered)
+            5. Cooking time and servings
+            
+            Only suggest recipes that primarily use the ingredients listed. Be concise and practical.
+            """
+        else:
+            prompt = f"""
+            Based on these ingredients: {ingredients}
+            
+            Create a delicious recipe that primarily uses these ingredients. Format your response as follows:
+            1. Recipe name (bold)
+            2. Brief description
+            3. Ingredients list (bullet points)
+            4. Simple step-by-step instructions (numbered)
+            5. Cooking time and servings
+            
+            Only suggest recipes that primarily use the ingredients listed. Be concise and practical.
+            """
+        
+        return llm_processor.generate(prompt, max_tokens)
+    except Exception as e:
+        logger.error(f"Error in generate_recipe: {str(e)}")
+        return f"Error generating recipe: {str(e)}"
+
+
+# Removed answer_question function as it's not needed for recipe generation
 
 
 def get_model_info() -> Dict[str, Any]:
@@ -143,29 +198,7 @@ def get_model_info() -> Dict[str, Any]:
     }
 
 
-def react_agent_prompt() -> str:
-    """Prompt template for ReAct agent reasoning"""
-    return """
-    You are an intelligent agent that helps identify companies from logos and find detailed company information.
-    
-    Tools available:
-    {tools}
-    
-    Use this format:
-    
-    Question: the question to solve
-    Thought: your reasoning step
-    Action: tool to use, one of [{tool_names}]
-    Action Input: the input for the tool
-    Observation: the result
-    ... (repeat Thought/Action/Action Input/Observation)
-    Thought: I now know the final answer
-    Final Answer: the complete answer with company name, HQ, website, services
-    
-    Begin!
-    
-    Question: {input}
-    """
+# Removed react_agent_prompt function as it's not needed for recipe generation
 
 
 if __name__ == "__main__":

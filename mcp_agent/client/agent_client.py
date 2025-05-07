@@ -60,7 +60,7 @@ class MultiModalAgent:
         return {"detected_food_items": food_items, "recipe_suggestions": recipe_suggestions}
     
     def _check_server_connectivity(self):
-        """Check connectivity to all servers and log results"""
+        """Check basic connectivity to all servers"""
         servers = [
             ("vision-server", 8000),
             ("llm-server", 8001),
@@ -71,34 +71,17 @@ class MultiModalAgent:
         
         for hostname, port in servers:
             try:
-                ip_address = socket.gethostbyname(hostname)
-                logger.info(f"✅ DNS resolution successful for {hostname}: {ip_address}")
-            except socket.gaierror:
-                logger.error(f"❌ DNS resolution failed for {hostname}")
-        
-        for hostname, port in servers:
-            try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(2)
                 result = sock.connect_ex((hostname, port))
                 if result == 0:
-                    logger.info(f"✅ TCP connection successful to {hostname}:{port}")
+                    logger.info(f"✅ Connection successful to {hostname}:{port}")
                 else:
-                    logger.error(f"❌ TCP connection failed to {hostname}:{port} (error code: {result})")
+                    logger.error(f"❌ Connection failed to {hostname}:{port}")
                 sock.close()
             except Exception as e:
-                logger.error(f"❌ TCP connection error to {hostname}:{port}: {str(e)}")
-        
-        for hostname, port in servers:
-            url = f"http://{hostname}:{port}/health"
-            try:
-                response = requests.get(url, timeout=2)
-                if response.status_code == 200:
-                    logger.info(f"✅ HTTP request successful to {url}: {response.status_code}")
-                else:
-                    logger.error(f"❌ HTTP request failed to {url}: {response.status_code}")
-            except requests.exceptions.RequestException as e:
-                logger.error(f"❌ HTTP request error to {url}: {str(e)}")
+                logger.error(f"❌ Connection error to {hostname}:{port}: {str(e)}")
+
     
     def _download_image(self, image_url: str, is_url: bool) -> str:
         """Download image from URL to local path"""
@@ -130,38 +113,18 @@ class MultiModalAgent:
     
     async def _call_mcp_tool(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Optional[Any]:
         """Call an MCP tool with retry logic and proper error handling"""
-        hostname = server_url.replace('http://', '').split(':')[0]
-        port = int(server_url.replace('http://', '').split(':')[1]) if ':' in server_url else 80
-        
-        logger.info(f"Attempting to connect to {hostname}:{port} for tool: {tool_name}")
-        
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
-            result = sock.connect_ex((hostname, port))
-            if result == 0:
-                logger.info(f"✅ TCP connection test successful to {hostname}:{port}")
-            else:
-                logger.error(f"❌ TCP connection test failed to {hostname}:{port} (error code: {result})")
-            sock.close()
-        except Exception as e:
-            logger.error(f"❌ TCP connection test error to {hostname}:{port}: {str(e)}")
+        logger.info(f"Calling {tool_name} on {server_url}")
         
         for attempt in range(self.max_retries + 1):
             try:
-                logger.info(f"Connecting to {server_url}/sse (attempt {attempt+1}/{self.max_retries+1})")
                 result = await asyncio.wait_for(
                     self._run_tool_call(server_url, tool_name, params),
-                    timeout=30.0
+                    timeout=60.0  # Increased timeout for larger models
                 )
                 return result
                 
             except asyncio.TimeoutError:
                 logger.warning(f"Tool call timed out (attempt {attempt+1}/{self.max_retries+1})")
-                if attempt < self.max_retries:
-                    await asyncio.sleep(self.retry_delay)
-            except asyncio.CancelledError:
-                logger.error(f"Task was cancelled (attempt {attempt+1}/{self.max_retries+1})")
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay)
             except Exception as e:
@@ -173,17 +136,13 @@ class MultiModalAgent:
         return None
     
     async def _run_tool_call(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Any:
-        """Run a single tool call without using TaskGroups to avoid cancellation issues"""
+        """Run a single tool call"""
         client = Client(f"{server_url}/sse")
         
         try:
             async with client:
                 result = await client.call_tool(tool_name, params)
-                logger.info(f"Raw response from {tool_name}:")
-                logger.info(f"Response type: {type(result)}")
-                logger.info(f"Response attributes: {dir(result)}")
-                logger.info(f"Response repr: {repr(result)}")
-                
+                logger.info(f"Received response from {tool_name}")
                 return result
         except Exception as e:
             logger.error(f"Error calling {tool_name}: {str(e)}")
@@ -191,165 +150,148 @@ class MultiModalAgent:
 
 
     async def _identify_food_items(self, image_path: str) -> str:
-        """Identify food items in image using Vision Server"""
-        logger.info("Analyzing image with Vision Server")
+        """Identify food items in image using the specialized Vision Server function"""
+        logger.info(f"Identifying food items for recipe suggestions: {image_path}")
+        
+        # Verify image exists before sending to server
+        if not os.path.exists(image_path):
+            logger.error(f"Image file not found: {image_path}")
+            return "[]"
+            
+        # Log image details
+        try:
+            file_size = os.path.getsize(image_path)
+            logger.info(f"Image file size: {file_size} bytes")
+        except Exception as e:
+            logger.warning(f"Could not get image file details: {str(e)}")
+        
+        # Call vision server with specialized food item identification function
+        print("\n==== IDENTIFYING FOOD ITEMS FOR RECIPES ====\n")
+        print(f"Processing image: {image_path}")
+        
         result = await self._call_mcp_tool(
             VISION_SERVER_URL,
-            "analyze_image",
-            {"image_path": image_path, "prompt": "List all food items visible in this image. Present as a JSON array of strings."}
+            "identify_food_items",  # Using the specialized food identification function
+            {"image_path": image_path}
         )
         
         if result:
-            print("\n==== RAW VISION SERVER RESPONSE ====")
-            print(f"Type: {type(result)}")
-            if hasattr(result, '__dict__'):
-                print(f"Dict representation: {result.__dict__}")
-            print(f"String representation: {str(result)}")
-            print("===================================\n")
+            print("\n==== FOOD ITEMS DETECTED BY VISION MODEL ====\n")
+            print(f"Raw response: {result}")
             
+            # Extract food items from response
             try:
                 if hasattr(result, 'content') and result.content:
                     for item in result.content:
                         if hasattr(item, 'type') and item.type == 'text':
                             food_items = item.text if hasattr(item, 'text') else ''
-                            if food_items:
-                                logger.info(f"Detected food items: {food_items}")
-                                return food_items
+                            print(f"Extracted food items: {food_items}")
+                            return food_items
                         elif isinstance(item, dict) and item.get('type') == 'text':
                             food_items = item.get('text', '')
-                            if food_items:
-                                logger.info(f"Detected food items: {food_items}")
-                                return food_items
+                            print(f"Extracted food items: {food_items}")
+                            return food_items
                 elif hasattr(result, 'result'):
                     food_items = str(result.result)
-                    logger.info(f"Detected food items: {food_items}")
+                    print(f"Extracted food items: {food_items}")
                     return food_items
                 else:
                     food_items = str(result)
-                    logger.info(f"Detected food items: {food_items}")
+                    print(f"Extracted food items: {food_items}")
                     return food_items
             except Exception as e:
                 logger.error(f"Error extracting food items from result: {str(e)}")
-                logger.debug(f"Raw result: {result}")
+                if isinstance(result, str):
+                    # If result is already a string, just return it
+                    return result
         
-        logger.warning("Could not identify food items, using fallback")
+        # Fallback to general analyze_image if identify_food_items fails
+        logger.warning("Specialized food identification failed, trying general image analysis")
+        fallback_result = await self._call_mcp_tool(
+            VISION_SERVER_URL,
+            "analyze_image",
+            {"image_path": image_path, "prompt": "List all food items visible in this image. Present as a JSON array of strings."}
+        )
+        
+        if fallback_result:
+            try:
+                if hasattr(fallback_result, 'content') and fallback_result.content:
+                    for item in fallback_result.content:
+                        if hasattr(item, 'type') and item.type == 'text':
+                            return item.text if hasattr(item, 'text') else '[]'
+                elif hasattr(fallback_result, 'result'):
+                    return str(fallback_result.result)
+                else:
+                    return str(fallback_result)
+            except Exception as e:
+                logger.error(f"Error extracting food items from fallback result: {str(e)}")
+        
+        logger.warning("Could not identify food items, using empty array")
         return "[]"
     
     async def _get_recipe_suggestions(self, food_items: str) -> str:
         """Get recipe suggestions using Search Server and LLM Server"""
-        logger.info(f"Getting recipe suggestions for: {food_items}")
+        logger.info(f"Getting recipe suggestions for ingredients: {food_items}")
         
         if food_items == "[]":
             return "No recipe suggestions available as no food items could be identified."
         
-        # First, use the LLM to generate a search query
-        search_query_prompt = f"Given these ingredients: {food_items}, generate a search query to find recipes that use most or all of these ingredients. Return ONLY the search query without any additional text."
+        # Step 1: Search for recipes with the identified ingredients
+        print("\n==== SEARCHING FOR RECIPES ====\n")
+        print(f"Searching for recipes with ingredients: {food_items}")
         
-        search_query_result = await self._call_mcp_tool(
-            LLM_SERVER_URL,
-            "generate_text",
-            {"prompt": search_query_prompt, "max_tokens": 100}
-        )
-        
-        if not search_query_result:
-            search_query = f"recipes with {food_items}"
-        else:
-            try:
-                if hasattr(search_query_result, 'content'):
-                    for item in search_query_result.content:
-                        if hasattr(item, 'type') and item.type == 'text':
-                            search_query = item.text
-                            break
-                    else:
-                        search_query = str(search_query_result)
-                else:
-                    search_query = str(search_query_result)
-            except Exception as e:
-                logger.error(f"Error extracting search query: {str(e)}")
-                search_query = f"recipes with {food_items}"
-        
-        logger.info(f"Generated search query: {search_query}")
-        
-        # Now use the search server to find recipes
-        result = await self._call_mcp_tool(
+        search_result = await self._call_mcp_tool(
             SEARCH_SERVER_URL,
-            "search_web",
-            {"query": search_query}
+            "search_recipes",
+            {"ingredients": food_items}
         )
         
-        if result:
-            print("\n==== RAW SEARCH SERVER RESPONSE ====\n")
-            print(f"Type: {type(result)}")
-            if hasattr(result, '__dict__'):
-                print(f"Dict representation: {result.__dict__}")
-            print(f"String representation: {str(result)}")
-            print("===================================\n")
+        # Extract search results - simplified extraction
+        search_result_text = ""
+        if search_result:
+            print(f"Raw search result received")
             
-            search_result_text = ""
-            try:
-                if hasattr(result, 'content'):
-                    for item in result.content:
-                        if hasattr(item, 'type') and item.type == 'text':
-                            search_result_text = item.text
-                            break
-                    else:
-                        search_result_text = str(result)
-                elif hasattr(result, 'result'):
-                    search_result_text = str(result.result)
-                else:
-                    search_result_text = str(result)
-            except Exception as e:
-                logger.error(f"Error extracting search results: {str(e)}")
-                search_result_text = str(result)
+            # Simple extraction logic - trust the model response format
+            if hasattr(search_result, 'content'):
+                for item in search_result.content:
+                    if hasattr(item, 'type') and item.type == 'text':
+                        search_result_text = item.text
+                        break
+            elif hasattr(search_result, 'result'):
+                search_result_text = str(search_result.result)
+            else:
+                search_result_text = str(search_result)
+        
+        # Step 2: Generate a recipe based on the ingredients and search results
+        print("\n==== GENERATING RECIPE SUGGESTION ====\n")
+        
+        recipe_result = await self._call_mcp_tool(
+            LLM_SERVER_URL,
+            "generate_recipe",
+            {
+                "ingredients": food_items,
+                "search_results": search_result_text[:2000] if search_result_text else "",
+                "max_tokens": 1000
+            }
+        )
+        
+        # Extract recipe - simplified extraction
+        if recipe_result:
+            print("Recipe generated successfully")
             
-            logger.info(f"Search results: {search_result_text[:200]}...")
-            
-            # Finally, use the LLM to synthesize a recipe suggestion
-            final_prompt = f"""
-            Given these ingredients: {food_items}
-            And these recipe search results: 
-            {search_result_text[:2000]}
-            
-            Suggest the best recipe the user can make with these ingredients. Format your response as follows:
-            1. Recipe name (bold)
-            2. Brief description
-            3. Ingredients list (bullet points)
-            4. Simple step-by-step instructions (numbered)
-            5. Cooking time and servings
-            
-            Only suggest recipes that primarily use the ingredients detected in the image. Be concise and practical.
-            """
-            print(f"final_prompt: {final_prompt}")
-            
-            recipe_result = await self._call_mcp_tool(
-                LLM_SERVER_URL,
-                "generate_text",
-                {"prompt": final_prompt, "max_tokens": 1000}
-            )
-            
-            if not recipe_result:
-                return f"Unable to generate recipe suggestions for {food_items}."
-            
-            recipe_text = ""
-            try:
-                if hasattr(recipe_result, 'content'):
-                    for item in recipe_result.content:
-                        if hasattr(item, 'type') and item.type == 'text':
-                            recipe_text = item.text
-                            break
-                    else:
-                        recipe_text = str(recipe_result)
-                elif hasattr(recipe_result, 'result'):
-                    recipe_text = str(recipe_result.result)
-                else:
-                    recipe_text = str(recipe_result)
-            except Exception as e:
-                logger.error(f"Error extracting recipe: {str(e)}")
-                recipe_text = str(recipe_result)
-            
-            return recipe_text
-        else:
-            return f"No recipe suggestions found for {food_items}."
+            # Simple extraction logic
+            if hasattr(recipe_result, 'content'):
+                for item in recipe_result.content:
+                    if hasattr(item, 'type') and item.type == 'text':
+                        return item.text
+            elif hasattr(recipe_result, 'result'):
+                return str(recipe_result.result)
+            else:
+                return str(recipe_result)
+        
+        # If we reach here, something went wrong
+        return f"Unable to generate recipe suggestions for {food_items}. Please try again with a clearer image."
+
     
 
 

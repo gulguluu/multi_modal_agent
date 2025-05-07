@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 server = FastMCP("VisionServer", host="0.0.0.0", port=8000)
 
 class ImageAnalyzer:
-    """Analyzes images to identify logos and content using a vision-language model."""
+    """Analyzes images to identify food items and ingredients using a vision-language model."""
 
     def __init__(
         self,
@@ -86,12 +86,15 @@ class ImageAnalyzer:
             messages = [
                 {
                     "role": "system",
-                    "content": "You are a food recognition expert. "
-                               "Identify all food items in the image and list them as a JSON array of strings. "
+                    "content": "You are a professional food recognition expert specializing in recipe ingredients. "
+                               "Your task is to identify all food items in the image and list them as a JSON array of strings. "
                                "For example, if shown food items, respond with ['apple', 'banana', 'milk']. "
-                               "Be specific and concise. Only include food ingredients that can be used in recipes. "
-                               "Do not include prepared dishes, only the raw ingredients. "
-                               "If you're uncertain about an item, include it with your best guess."
+                               "Be specific and concise. Focus on identifying individual ingredients rather than prepared dishes. "
+                               "Include common cooking ingredients like vegetables, fruits, meats, dairy, spices, and pantry staples. "
+                               "If you see prepared food, list the main visible ingredients instead of the dish name. "
+                               "For packaged foods, identify the main ingredient (e.g., 'pasta' not 'pasta box'). "
+                               "If you're uncertain about an item, include your best guess. "
+                               "IMPORTANT: Always respond with a valid JSON array, even if empty ([])."
                 },
                 {
                     "role": "user",
@@ -142,19 +145,90 @@ analyzer = ImageAnalyzer()
 
 @server.tool()
 def analyze_image(
-    image_path: str, prompt: str = "Identify the food items shown in this image?"
+    image_path: str, prompt: str = "List all food items visible in this image. Present as a JSON array of strings."
 ) -> str:
     """
-    Analyze an image to identify food items.
+    Analyze an image to identify food items and ingredients for recipes.
 
     Args:
         image_path: Path to the image file
-        prompt: Text prompt for the vision model
+        prompt: Text prompt for the vision model (default optimized for food detection)
 
     Returns:
-        Text description of the image content
+        JSON array of identified food items as a string
     """
+    logger.info(f"Analyzing image for food items: {image_path}")
     return analyzer.analyze(image_path, prompt)
+
+
+@server.tool()
+def identify_food_items(image_path: str) -> str:
+    """
+    Specialized function to identify food items and ingredients in an image for recipe suggestions.
+    
+    This function is optimized specifically for food detection with a carefully crafted prompt.
+
+    Args:
+        image_path: Path to the image file containing food items
+
+    Returns:
+        JSON array of identified food items as a string
+    """
+    logger.info(f"Identifying food items for recipes: {image_path}")
+    
+    # Verify image exists
+    if not os.path.exists(image_path):
+        logger.error(f"Image not found: {image_path}")
+        return "[]"
+        
+    # Log image details
+    try:
+        file_size = os.path.getsize(image_path)
+        logger.info(f"Image file size: {file_size} bytes")
+    except Exception as e:
+        logger.warning(f"Could not get image file details: {str(e)}")
+    
+    # Use a specialized prompt for food detection
+    specialized_prompt = """Carefully examine this image and identify ALL food items and ingredients visible.
+    Focus on individual ingredients that could be used in recipes, not prepared dishes.
+    Return ONLY a JSON array of strings with the identified items. Example: ["tomato", "onion", "chicken"]
+    Be specific about types when possible (e.g., "red bell pepper" rather than just "pepper").
+    If you see packaged foods, name the main ingredient, not the packaging.
+    If you see prepared dishes, list the visible ingredients instead.
+    If no food items are visible, return an empty array: []."""
+    
+    # Use the analyzer with the specialized prompt
+    result = analyzer.analyze(image_path, specialized_prompt)
+    
+    # Simple JSON validation with minimal processing
+    try:
+        import json
+        import re
+        
+        # Check if the result already looks like a JSON array
+        if result.strip().startswith('[') and result.strip().endswith(']'):
+            try:
+                # Try to parse as JSON
+                json.loads(result)
+                # If it parses successfully, keep it as is
+            except json.JSONDecodeError:
+                # If it looks like JSON but isn't valid, do minimal cleanup
+                logger.info(f"Basic cleanup of JSON-like result: {result[:50]}...")
+                # Try to extract a valid JSON array pattern
+                json_array_match = re.search(r'\[.*?\]', result)
+                if json_array_match:
+                    result = json_array_match.group(0)
+        else:
+            # If it's not in JSON format, wrap it in an array
+            logger.info(f"Result not in JSON format, returning as-is: {result}...")
+            # The search and LLM components can handle non-JSON text
+            
+    except Exception as e:
+        logger.error(f"Error processing food items result: {str(e)}")
+        result = "[]"
+    
+    logger.info(f"Identified food items: {result}")
+    return result
 
 
 def get_model_info() -> dict:
