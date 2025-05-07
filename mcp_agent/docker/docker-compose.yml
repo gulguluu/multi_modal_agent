@@ -42,6 +42,7 @@ services:
       - IPEX_MERGE_FUSION=1
       - IPEX_AUTO_TUNE=1
       - TRANSFORMERS_CACHE=/app/models
+      - HUGGINGFACE_CACHE_DIR=/app/models
     restart: unless-stopped
     networks:
       - mcp-network
@@ -66,19 +67,19 @@ services:
     pull_policy: never
     image: mcp-client:latest
     container_name: mcp-client
+    profiles: [manual]
     depends_on:
       - vision-server
       - llm-server
       - search-server
     volumes:
-      - ../data:/app/data  # For image files
+      - ../data:/app/data 
     environment:
       - VISION_SERVER_URL=http://vision-server:8000
       - LLM_SERVER_URL=http://llm-server:8001
       - SEARCH_SERVER_URL=http://search-server:8002
     networks:
       - mcp-network
-    # No restart policy - this container is meant to be run manually with arguments
 
 volumes:
   vision-cache:
