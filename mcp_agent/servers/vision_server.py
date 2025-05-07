@@ -28,7 +28,7 @@ class ImageAnalyzer:
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct",
+        model_name: str = "Qwen/Qwen2.5-VL-3B-Instruct",
         device: Optional[str] = None,
     ):
         """Initialize the image analyzer with the specified model.
@@ -59,7 +59,7 @@ class ImageAnalyzer:
 
             if self.device == "xpu":
                 logger.info("Applying IPEX optimizations to vision model")
-                #self.model = ipex.optimize(self.model, dtype=torch.float16)
+                self.model = ipex.optimize(self.model, dtype=torch.bfloat16)
 
         except Exception as e:
             logger.error(f"Error initializing ImageAnalyzer: {str(e)}")
