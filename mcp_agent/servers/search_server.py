@@ -14,7 +14,7 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-server = FastMCP("SearchServer")
+server = FastMCP("SearchServer", host="0.0.0.0", port=8002)
 search_tool = DuckDuckGoSearchRun()
 
 
@@ -91,5 +91,5 @@ def health() -> dict:
 if __name__ == "__main__":
     # Use SSE transport as it's more widely supported
     logger.info("Starting Search MCP Server with FastMCP 2.0.0...")
-    # In FastMCP 2.0.0, the run method doesn't take host/port as separate arguments
-    server.run("0.0.0.0", 8002, transport="sse")
+    # In FastMCP 2.0.0, the run method only takes the transport type
+    server.run("sse")

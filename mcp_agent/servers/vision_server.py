@@ -19,7 +19,7 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-server = FastMCP("VisionServer")
+server = FastMCP("VisionServer", host="0.0.0.0", port=8000)
 
 
 class ImageAnalyzer:
@@ -148,5 +148,5 @@ def health() -> dict:
 if __name__ == "__main__":
     # Use SSE transport as it's more widely supported
     logger.info("Starting Vision Model MCP Server with FastMCP 2.0.0...")
-    # In FastMCP 2.0.0, the run method doesn't take host/port as separate arguments
-    server.run("0.0.0.0", 8000, transport="sse")
+    # In FastMCP 2.0.0, the run method only takes the transport type
+    server.run("sse")
