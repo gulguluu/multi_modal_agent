@@ -147,54 +147,41 @@ class MultiModalAgent:
         
         for attempt in range(self.max_retries + 1):
             try:
-                # Create the client directly without using context manager
-                # to avoid cancellation issues with TaskGroups
+                # Create and run a single task for the tool call to avoid
+                # TaskGroup cancellation issues
                 logger.info(f"Connecting to {server_url}/sse (attempt {attempt+1}/{self.max_retries+1})")
-                client = Client(f"{server_url}/sse")
                 
-                try:
-                    # Connect and run the tool with careful error handling
-                    await client.connect()
-                    
-                    # Set a timeout for the tool call
-                    result = await asyncio.wait_for(
-                        client.run_tool(tool_name, params),
-                        timeout=30.0  # 30 second timeout for more reliability
-                    )
-                    
-                    # Clean up properly to avoid leaked connections
-                    await client.disconnect()
-                    return result
-                    
-                except Exception as e:
-                    # Make sure to clean up if there's an error
-                    try:
-                        if hasattr(client, 'disconnect'):
-                            await client.disconnect()
-                    except Exception:
-                        pass
-                    raise e
+                # Run the tool call in a single task with a timeout
+                result = await asyncio.wait_for(
+                    self._run_tool_call(server_url, tool_name, params),
+                    timeout=30.0  # 30 second timeout for more reliability
+                )
+                return result
+                
             except asyncio.TimeoutError:
                 logger.warning(f"Tool call timed out (attempt {attempt+1}/{self.max_retries+1})")
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay)
-                else:
-                    logger.error(f"All attempts to call {tool_name} timed out")
-                    return None
             except asyncio.CancelledError:
-                logger.warning(f"Tool call was cancelled (attempt {attempt+1}/{self.max_retries+1})")
+                logger.error(f"Task was cancelled (attempt {attempt+1}/{self.max_retries+1})")
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay)
-                else:
-                    logger.error(f"All attempts to call {tool_name} were cancelled")
-                    return None
             except Exception as e:
                 logger.error(f"Error calling {tool_name}: {str(e)} (attempt {attempt+1}/{self.max_retries+1})")
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay)
-                else:
-                    logger.error(f"All attempts to call {tool_name} failed")
-                    return None
+        
+        logger.error(f"All attempts to call {tool_name} failed")
+        return None
+    
+    async def _run_tool_call(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> str:
+        """Run a single tool call without using TaskGroups to avoid cancellation issues"""
+        async with Client(f"{server_url}/sse") as client:
+            try:
+                return await client.run_tool(tool_name, params)
+            except Exception as e:
+                logger.error(f"Error calling {tool_name}: {str(e)}")
+                return None
 
 
     async def _identify_logo(self, image_path: str) -> str:
