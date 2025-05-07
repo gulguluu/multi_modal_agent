@@ -146,5 +146,6 @@ def health() -> dict:
 
 
 if __name__ == "__main__":
-    logger.info("Starting Vision Model MCP Server with SSE transport...")
-    server.run(host="0.0.0.0", port=8000, transport="sse")
+    # Support both SSE and WebSocket transports
+    logger.info("Starting Vision Model MCP Server with SSE and WebSocket transports...")
+    server.run(host="0.0.0.0", port=8000, transport=["sse", "ws"])

@@ -8,6 +8,8 @@ langchain-community>0.0.10
 # MCP dependencies
 fastmcp==2.2.10
 langchain-mcp-adapters==0.0.10
+# WebSocket support
+websockets>=11.0.0
 # Async dependencies
 anyio>=3.7.0
 httpx>=0.25.0
