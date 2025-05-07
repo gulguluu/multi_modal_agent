@@ -66,7 +66,7 @@ class ImageAnalyzer:
             raise
 
     def analyze(
-        self, image_path: str, prompt: str = "What company logo is this? Identify the exact company / product name."
+        self, image_path: str, prompt: str = "List all food items visible in this image. Present as a JSON array of strings."
     ) -> str:
         """Analyze an image to identify its content.
 
@@ -86,11 +86,12 @@ class ImageAnalyzer:
             messages = [
                 {
                     "role": "system",
-                    "content": "You are a logo identification expert specializing in modern technology companies. "
-                               "Identify company logos accurately and respond with ONLY the company name. "
-                               "For example, if shown a logo, respond with just the company name like 'Apple' or 'Microsoft'. "
-                               "Be specific and concise. Provide only the company name without any explanations. "
-                               "Never respond with 'None' or 'I don't know'. If you're uncertain, make your best guess."
+                    "content": "You are a food recognition expert. "
+                               "Identify all food items in the image and list them as a JSON array of strings. "
+                               "For example, if shown food items, respond with ['apple', 'banana', 'milk']. "
+                               "Be specific and concise. Only include food ingredients that can be used in recipes. "
+                               "Do not include prepared dishes, only the raw ingredients. "
+                               "If you're uncertain about an item, include it with your best guess."
                 },
                 {
                     "role": "user",
@@ -126,8 +127,8 @@ class ImageAnalyzer:
                 result = result.split(",")[0].strip()
             
             if result.lower() == "none" or not result or result.lower() == "i don't know" or result.lower() == "unknown":
-                result = "Unknown Logo"
-                logger.warning("Vision model failed to identify the logo, using fallback: Unknown Logo")
+                result = "[]"
+                logger.warning("Vision model failed to identify the food items, using fallback: empty array")
             
             logger.info(f"Analysis result: {result}")
             return result
@@ -141,10 +142,10 @@ analyzer = ImageAnalyzer()
 
 @server.tool()
 def analyze_image(
-    image_path: str, prompt: str = "Identify the logo shown in this image?"
+    image_path: str, prompt: str = "Identify the food items shown in this image?"
 ) -> str:
     """
-    Analyze an image to identify logos or content.
+    Analyze an image to identify food items.
 
     Args:
         image_path: Path to the image file
@@ -161,7 +162,7 @@ def get_model_info() -> dict:
     return {
         "model_name": "Qwen/Qwen2.5-VL-3B-Instruct",
         "device": analyzer.device,
-        "capabilities": ["logo identification", "image content analysis"],
+        "capabilities": ["food item identification", "image content analysis"],
     }
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Multi-Modal Agent Client for analyzing logos and retrieving company information
+Multi-Modal Agent Client for analyzing food images and suggesting recipes
 """
 
 import argparse
@@ -35,7 +35,7 @@ logger.info(f"Connecting to Search Server at: {SEARCH_SERVER_URL}")
 
 
 class MultiModalAgent:
-    """Multi-Modal Agent for analyzing logos and retrieving company information"""
+    """Multi-Modal Agent for analyzing food images and suggesting recipes"""
 
     def __init__(self):
         self.max_retries = 2
@@ -43,21 +43,21 @@ class MultiModalAgent:
         
         self._check_server_connectivity()
 
-    async def analyze_logo(self, image_path: str, is_url: bool = False) -> Dict[str, Any]:
-        """Analyze a logo image and retrieve company information
+    async def suggest_recipe(self, image_path: str, is_url: bool = False) -> Dict[str, Any]:
+        """Analyze a food image and suggest recipes
 
         Args:
             image_path: Path to image file or URL
             is_url: Whether the image_path is a URL
 
         Returns:
-            Dict containing analysis results and company information
+            Dict containing detected food items and recipe suggestions
         """
         local_image_path = self._download_image(image_path, is_url) if is_url else image_path
-        company_name = await self._identify_logo(local_image_path)
-        company_info = await self._get_company_info(company_name)
+        food_items = await self._identify_food_items(local_image_path)
+        recipe_suggestions = await self._get_recipe_suggestions(food_items)
         
-        return {"detected_logo": company_name, "company_info": company_info}
+        return {"detected_food_items": food_items, "recipe_suggestions": recipe_suggestions}
     
     def _check_server_connectivity(self):
         """Check connectivity to all servers and log results"""
@@ -190,13 +190,13 @@ class MultiModalAgent:
             return None
 
 
-    async def _identify_logo(self, image_path: str) -> str:
-        """Identify logo in image using Vision Server"""
+    async def _identify_food_items(self, image_path: str) -> str:
+        """Identify food items in image using Vision Server"""
         logger.info("Analyzing image with Vision Server")
         result = await self._call_mcp_tool(
             VISION_SERVER_URL,
             "analyze_image",
-            {"image_path": image_path, "prompt": "What company logo is this? Identify the exact company name."}
+            {"image_path": image_path, "prompt": "List all food items visible in this image. Present as a JSON array of strings."}
         )
         
         if result:
@@ -211,74 +211,145 @@ class MultiModalAgent:
                 if hasattr(result, 'content') and result.content:
                     for item in result.content:
                         if hasattr(item, 'type') and item.type == 'text':
-                            company_name = item.text if hasattr(item, 'text') else ''
-                            if company_name:
-                                logger.info(f"Detected logo/company: {company_name}")
-                                return company_name
+                            food_items = item.text if hasattr(item, 'text') else ''
+                            if food_items:
+                                logger.info(f"Detected food items: {food_items}")
+                                return food_items
                         elif isinstance(item, dict) and item.get('type') == 'text':
-                            company_name = item.get('text', '')
-                            if company_name:
-                                logger.info(f"Detected logo/company: {company_name}")
-                                return company_name
+                            food_items = item.get('text', '')
+                            if food_items:
+                                logger.info(f"Detected food items: {food_items}")
+                                return food_items
                 elif hasattr(result, 'result'):
-                    company_name = str(result.result)
-                    logger.info(f"Detected logo/company: {company_name}")
-                    return company_name
+                    food_items = str(result.result)
+                    logger.info(f"Detected food items: {food_items}")
+                    return food_items
                 else:
-                    company_name = str(result)
-                    logger.info(f"Detected logo/company: {company_name}")
-                    return company_name
+                    food_items = str(result)
+                    logger.info(f"Detected food items: {food_items}")
+                    return food_items
             except Exception as e:
-                logger.error(f"Error extracting company name from result: {str(e)}")
+                logger.error(f"Error extracting food items from result: {str(e)}")
                 logger.debug(f"Raw result: {result}")
         
-        logger.warning("Could not identify logo, using fallback")
-        return "Unknown"
+        logger.warning("Could not identify food items, using fallback")
+        return "[]"
     
-    async def _get_company_info(self, company_name: str) -> str:
-        """Get company information using Search Server"""
-        logger.info(f"Getting company info for: {company_name}")
+    async def _get_recipe_suggestions(self, food_items: str) -> str:
+        """Get recipe suggestions using Search Server and LLM Server"""
+        logger.info(f"Getting recipe suggestions for: {food_items}")
         
-        if company_name == "Unknown":
-            return "No company information available as the logo could not be identified."
-            
+        if food_items == "[]":
+            return "No recipe suggestions available as no food items could be identified."
+        
+        # First, use the LLM to generate a search query
+        search_query_prompt = f"Given these ingredients: {food_items}, generate a search query to find recipes that use most or all of these ingredients. Return ONLY the search query without any additional text."
+        
+        search_query_result = await self._call_mcp_tool(
+            LLM_SERVER_URL,
+            "generate_text",
+            {"prompt": search_query_prompt, "max_tokens": 100}
+        )
+        
+        if not search_query_result:
+            search_query = f"recipes with {food_items}"
+        else:
+            try:
+                if hasattr(search_query_result, 'content'):
+                    for item in search_query_result.content:
+                        if hasattr(item, 'type') and item.type == 'text':
+                            search_query = item.text
+                            break
+                    else:
+                        search_query = str(search_query_result)
+                else:
+                    search_query = str(search_query_result)
+            except Exception as e:
+                logger.error(f"Error extracting search query: {str(e)}")
+                search_query = f"recipes with {food_items}"
+        
+        logger.info(f"Generated search query: {search_query}")
+        
+        # Now use the search server to find recipes
         result = await self._call_mcp_tool(
             SEARCH_SERVER_URL,
-            "search_company_info",
-            {"company_name": company_name}
+            "search_web",
+            {"query": search_query}
         )
         
         if result:
-            print("\n==== RAW SEARCH SERVER RESPONSE ====")
+            print("\n==== RAW SEARCH SERVER RESPONSE ====\n")
             print(f"Type: {type(result)}")
             if hasattr(result, '__dict__'):
                 print(f"Dict representation: {result.__dict__}")
             print(f"String representation: {str(result)}")
             print("===================================\n")
             
+            search_result_text = ""
             try:
-                if hasattr(result, 'content') and result.content:
+                if hasattr(result, 'content'):
                     for item in result.content:
                         if hasattr(item, 'type') and item.type == 'text':
-                            json_text = item.text if hasattr(item, 'text') else f"No information found for {company_name}."
-                            try:
-                                import json
-                                info = json.loads(json_text)
-                                return json_text
-                            except json.JSONDecodeError:
-                                return json_text
-                        elif isinstance(item, dict) and item.get('type') == 'text':
-                            return item.get('text', f"No information found for {company_name}.")
+                            search_result_text = item.text
+                            break
+                    else:
+                        search_result_text = str(result)
                 elif hasattr(result, 'result'):
-                    return str(result.result)
+                    search_result_text = str(result.result)
                 else:
-                    return str(result)
+                    search_result_text = str(result)
             except Exception as e:
-                logger.error(f"Error extracting company info from result: {str(e)}")
-                logger.debug(f"Raw result: {result}")
-                return f"Error retrieving information for {company_name}."
+                logger.error(f"Error extracting search results: {str(e)}")
+                search_result_text = str(result)
+            
+            logger.info(f"Search results: {search_result_text[:200]}...")
+            
+            # Finally, use the LLM to synthesize a recipe suggestion
+            final_prompt = f"""
+            Given these ingredients: {food_items}
+            And these recipe search results: 
+            {search_result_text[:2000]}
+            
+            Suggest the best recipe the user can make with these ingredients. Format your response as follows:
+            1. Recipe name (bold)
+            2. Brief description
+            3. Ingredients list (bullet points)
+            4. Simple step-by-step instructions (numbered)
+            5. Cooking time and servings
+            
+            Only suggest recipes that primarily use the ingredients detected in the image. Be concise and practical.
+            """
+            print(f"final_prompt: {final_prompt}")
+            
+            recipe_result = await self._call_mcp_tool(
+                LLM_SERVER_URL,
+                "generate_text",
+                {"prompt": final_prompt, "max_tokens": 1000}
+            )
+            
+            if not recipe_result:
+                return f"Unable to generate recipe suggestions for {food_items}."
+            
+            recipe_text = ""
+            try:
+                if hasattr(recipe_result, 'content'):
+                    for item in recipe_result.content:
+                        if hasattr(item, 'type') and item.type == 'text':
+                            recipe_text = item.text
+                            break
+                    else:
+                        recipe_text = str(recipe_result)
+                elif hasattr(recipe_result, 'result'):
+                    recipe_text = str(recipe_result.result)
+                else:
+                    recipe_text = str(recipe_result)
+            except Exception as e:
+                logger.error(f"Error extracting recipe: {str(e)}")
+                recipe_text = str(recipe_result)
+            
+            return recipe_text
         else:
-            return f"No information found for {company_name}."
+            return f"No recipe suggestions found for {food_items}."
     
 
 
@@ -289,14 +360,14 @@ class MultiModalAgent:
 
 
 async def main():
-    """Main function to run the multi-modal agent"""
+    """Main function to run the multi-modal agent for recipe suggestions"""
     try:
-        parser = argparse.ArgumentParser(description="Multi-Modal Agent for Logo Analysis")
+        parser = argparse.ArgumentParser(description="Multi-Modal Agent for Recipe Suggestions")
         parser.add_argument(
             "--image", 
             type=str, 
             required=True,
-            help="Path to logo image file or URL"
+            help="Path to food image file or URL"
         )
         parser.add_argument(
             "--url", 
@@ -311,7 +382,7 @@ async def main():
         parser.add_argument(
             "--timeout", 
             type=int, 
-            default=60,
+            default=120,
             help="Timeout in seconds for the entire operation"
         )
         args = parser.parse_args()
@@ -321,23 +392,23 @@ async def main():
             logging.getLogger("httpx").setLevel(logging.INFO)
             logging.getLogger("mcp").setLevel(logging.DEBUG)
 
-        print("🧠 Initializing Multi-Modal Agent...")
+        print("🧠 Initializing Multi-Modal Recipe Agent...")
         agent = MultiModalAgent()
 
-        print(f"🖼️ Analyzing image {'URL' if args.url else 'file'}: {args.image}")
+        print(f"🍽️ Analyzing food image {'URL' if args.url else 'file'}: {args.image}")
         
         # Set a timeout for the entire operation
         try:
             # Use asyncio.wait_for to set a timeout for the entire operation
             result = await asyncio.wait_for(
-                agent.analyze_logo(args.image, is_url=args.url),
+                agent.suggest_recipe(args.image, is_url=args.url),
                 timeout=args.timeout
             )
             
-            print(f"✅ Detected logo/company name: {result['detected_logo']}")
+            print(f"✅ Detected food items: {result['detected_food_items']}")
             print("")
-            print("🎯 Company Information:")
-            print(f"{result['company_info']}")
+            print("🍳 Recipe Suggestion:")
+            print(f"{result['recipe_suggestions']}")
             
         except asyncio.TimeoutError:
             logger.error(f"Operation timed out after {args.timeout} seconds")
