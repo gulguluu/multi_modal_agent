@@ -176,25 +176,17 @@ class MultiModalAgent:
     
     async def _run_tool_call(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> str:
         """Run a single tool call without using TaskGroups to avoid cancellation issues"""
-        # FastMCP 2.0.0 uses a different API pattern
+        # Create the client
         client = Client(f"{server_url}/sse")
+        
         try:
-            # Initialize the client
-            await client.initialize()
-            
-            # Call the tool
-            result = await client.call_tool(tool_name, params)
-            
-            # Clean up
-            await client.close()
-            return result
+            # Use the async context manager pattern as recommended in FastMCP docs
+            async with client:
+                # Call the tool
+                result = await client.call_tool(tool_name, params)
+                return result
         except Exception as e:
             logger.error(f"Error calling {tool_name}: {str(e)}")
-            # Make sure to clean up
-            try:
-                await client.close()
-            except:
-                pass
             return None
 
 
