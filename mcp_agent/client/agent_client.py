@@ -8,6 +8,8 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+import socket
+import subprocess
 import sys
 import time
 from typing import Dict, Any, Optional
@@ -39,6 +41,9 @@ class MultiModalAgent:
     def __init__(self):
         self.max_retries = 2
         self.retry_delay = 1  # seconds
+        
+        # Check network connectivity to servers on startup
+        self._check_server_connectivity()
 
     async def analyze_logo(self, image_path: str, is_url: bool = False) -> Dict[str, Any]:
         """Analyze a logo image and retrieve company information
@@ -55,6 +60,50 @@ class MultiModalAgent:
         company_info = await self._get_company_info(company_name)
         
         return {"detected_logo": company_name, "company_info": company_info}
+    
+    def _check_server_connectivity(self):
+        """Check connectivity to all servers and log results"""
+        servers = [
+            ("vision-server", 8000),
+            ("llm-server", 8001),
+            ("search-server", 8002)
+        ]
+        
+        logger.info("Checking server connectivity...")
+        
+        # Try DNS resolution
+        for hostname, port in servers:
+            try:
+                ip_address = socket.gethostbyname(hostname)
+                logger.info(f"✅ DNS resolution successful for {hostname}: {ip_address}")
+            except socket.gaierror:
+                logger.error(f"❌ DNS resolution failed for {hostname}")
+        
+        # Try TCP connection
+        for hostname, port in servers:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2)
+                result = sock.connect_ex((hostname, port))
+                if result == 0:
+                    logger.info(f"✅ TCP connection successful to {hostname}:{port}")
+                else:
+                    logger.error(f"❌ TCP connection failed to {hostname}:{port} (error code: {result})")
+                sock.close()
+            except Exception as e:
+                logger.error(f"❌ TCP connection error to {hostname}:{port}: {str(e)}")
+        
+        # Try HTTP requests
+        for hostname, port in servers:
+            url = f"http://{hostname}:{port}/health"
+            try:
+                response = requests.get(url, timeout=2)
+                if response.status_code == 200:
+                    logger.info(f"✅ HTTP request successful to {url}: {response.status_code}")
+                else:
+                    logger.error(f"❌ HTTP request failed to {url}: {response.status_code}")
+            except requests.exceptions.RequestException as e:
+                logger.error(f"❌ HTTP request error to {url}: {str(e)}")
     
     def _download_image(self, image_url: str, is_url: bool) -> str:
         """Download image from URL to local path"""
@@ -76,9 +125,30 @@ class MultiModalAgent:
     
     async def _call_mcp_tool(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Optional[str]:
         """Call an MCP tool with retry logic and proper error handling"""
+        # Extract hostname and port from server_url for diagnostics
+        hostname = server_url.replace('http://', '').split(':')[0]
+        port = int(server_url.replace('http://', '').split(':')[1]) if ':' in server_url else 80
+        
+        # Log diagnostic info before attempting connection
+        logger.info(f"Attempting to connect to {hostname}:{port} for tool: {tool_name}")
+        
+        # Try a simple TCP connection test before using the MCP client
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            result = sock.connect_ex((hostname, port))
+            if result == 0:
+                logger.info(f"✅ TCP connection test successful to {hostname}:{port}")
+            else:
+                logger.error(f"❌ TCP connection test failed to {hostname}:{port} (error code: {result})")
+            sock.close()
+        except Exception as e:
+            logger.error(f"❌ TCP connection test error to {hostname}:{port}: {str(e)}")
+        
         for attempt in range(self.max_retries + 1):
             try:
                 # Use the simplest possible approach with async context manager
+                logger.info(f"Connecting to {server_url}/sse (attempt {attempt+1}/{self.max_retries+1})")
                 async with Client(f"{server_url}/sse") as client:
                     # Set a timeout for the tool call
                     result = await asyncio.wait_for(
