@@ -19,6 +19,8 @@ services:
       - IPEX_MERGE_FUSION=1
       - IPEX_AUTO_TUNE=1
     restart: unless-stopped
+    networks:
+      - mcp-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -47,6 +49,8 @@ services:
       - IPEX_AUTO_TUNE=1
       - TRANSFORMERS_CACHE=/app/models
     restart: unless-stopped
+    networks:
+      - mcp-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
@@ -64,6 +68,8 @@ services:
     ports:
       - "8002:8002"
     restart: unless-stopped
+    networks:
+      - mcp-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -88,9 +94,15 @@ services:
       - VISION_SERVER_URL=http://vision-server:8000
       - LLM_SERVER_URL=http://llm-server:8001
       - SEARCH_SERVER_URL=http://search-server:8002
+    networks:
+      - mcp-network
     restart: on-failure
 
 volumes:
   vision-cache:
   llm-cache:
   llm-models:
+
+networks:
+  mcp-network:
+    driver: bridge
