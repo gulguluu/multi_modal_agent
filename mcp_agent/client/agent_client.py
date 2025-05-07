@@ -14,7 +14,6 @@ from typing import Dict, Any, Optional
 
 import requests
 from fastmcp import Client
-from fastmcp.client.transports import WSTransport
 
 # Configure logging
 logging.basicConfig(
@@ -25,19 +24,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Server configurations - read from environment variables with fallbacks
-# Convert HTTP URLs to WebSocket URLs (ws:// instead of http://) for more reliable connections
-def http_to_ws_url(url: str) -> str:
-    """Convert HTTP URL to WebSocket URL"""
-    return url.replace("http://", "ws://").replace("https://", "wss://")
-
 VISION_SERVER_URL = os.environ.get("VISION_SERVER_URL", "http://localhost:8000")
 LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://localhost:8001")
 SEARCH_SERVER_URL = os.environ.get("SEARCH_SERVER_URL", "http://localhost:8002")
-
-# WebSocket URLs for more reliable connections
-VISION_SERVER_WS_URL = http_to_ws_url(VISION_SERVER_URL)
-LLM_SERVER_WS_URL = http_to_ws_url(LLM_SERVER_URL)
-SEARCH_SERVER_WS_URL = http_to_ws_url(SEARCH_SERVER_URL)
 
 logger.info(f"Connecting to Vision Server at: {VISION_SERVER_URL}")
 logger.info(f"Connecting to LLM Server at: {LLM_SERVER_URL}")
@@ -87,44 +76,32 @@ class MultiModalAgent:
     
     async def _call_mcp_tool(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Optional[str]:
         """Call an MCP tool with retry logic and proper error handling"""
-        # Convert HTTP URL to WebSocket URL for more reliable connections
-        ws_url = http_to_ws_url(server_url)
-        
         for attempt in range(self.max_retries + 1):
-            client = None
             try:
-                # Use WebSocket transport instead of SSE for more reliable connections
-                transport = WSTransport(url=ws_url)
-                client = Client(transport)
-                
-                # Connect and run the tool with a timeout
-                await client.connect()
-                result = await asyncio.wait_for(
-                    client.run_tool(tool_name, params),
-                    timeout=10.0  # 10 second timeout
-                )
-                await client.close()
-                return result
-                    
+                # Use the simplest possible approach with async context manager
+                async with Client(f"{server_url}/sse") as client:
+                    # Set a timeout for the tool call
+                    result = await asyncio.wait_for(
+                        client.run_tool(tool_name, params),
+                        timeout=15.0  # 15 second timeout
+                    )
+                    return result
             except asyncio.TimeoutError:
                 logger.warning(f"Tool call timed out (attempt {attempt+1}/{self.max_retries+1})")
-                if client:
-                    try:
-                        await client.close()
-                    except Exception:
-                        pass
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay)
                 else:
                     logger.error(f"All attempts to call {tool_name} timed out")
                     return None
+            except asyncio.CancelledError:
+                logger.warning(f"Tool call was cancelled (attempt {attempt+1}/{self.max_retries+1})")
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.retry_delay)
+                else:
+                    logger.error(f"All attempts to call {tool_name} were cancelled")
+                    return None
             except Exception as e:
                 logger.error(f"Error calling {tool_name}: {str(e)} (attempt {attempt+1}/{self.max_retries+1})")
-                if client:
-                    try:
-                        await client.close()
-                    except Exception:
-                        pass
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay)
                 else:
