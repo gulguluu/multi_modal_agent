@@ -147,15 +147,33 @@ class MultiModalAgent:
         
         for attempt in range(self.max_retries + 1):
             try:
-                # Use the simplest possible approach with async context manager
+                # Create the client directly without using context manager
+                # to avoid cancellation issues with TaskGroups
                 logger.info(f"Connecting to {server_url}/sse (attempt {attempt+1}/{self.max_retries+1})")
-                async with Client(f"{server_url}/sse") as client:
+                client = Client(f"{server_url}/sse")
+                
+                try:
+                    # Connect and run the tool with careful error handling
+                    await client.connect()
+                    
                     # Set a timeout for the tool call
                     result = await asyncio.wait_for(
                         client.run_tool(tool_name, params),
-                        timeout=15.0  # 15 second timeout
+                        timeout=30.0  # 30 second timeout for more reliability
                     )
+                    
+                    # Clean up properly to avoid leaked connections
+                    await client.disconnect()
                     return result
+                    
+                except Exception as e:
+                    # Make sure to clean up if there's an error
+                    try:
+                        if hasattr(client, 'disconnect'):
+                            await client.disconnect()
+                    except Exception:
+                        pass
+                    raise e
             except asyncio.TimeoutError:
                 logger.warning(f"Tool call timed out (attempt {attempt+1}/{self.max_retries+1})")
                 if attempt < self.max_retries:
