@@ -55,7 +55,7 @@ class LLMProcessor:
                 "text-generation",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                max_new_tokens=512,
+                max_new_tokens=256,  # Reduced from 512 for better performance
                 temperature=0.2,
                 top_p=0.95,
                 do_sample=True,
@@ -92,7 +92,7 @@ llm_processor = LLMProcessor()
 
 
 @server.tool()
-def generate_text(prompt: str, max_tokens: int = 512) -> str:
+def generate_text(prompt: str, max_tokens: int = 256) -> str:
     """
     Generate text using the local LLM.
 
@@ -118,7 +118,7 @@ def answer_question(question: str) -> str:
         Answer to the question
     """
     prompt = f"Please answer the following question accurately and concisely:\n\nQuestion: {question}\n\nAnswer:"
-    return llm_processor.generate(prompt)
+    return llm_processor.generate(prompt, max_tokens=128)  # Using fewer tokens for concise answers
 
 
 def get_model_info() -> Dict[str, Any]:
