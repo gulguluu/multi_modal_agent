@@ -86,7 +86,7 @@ class ImageAnalyzer:
             ).to(self.device)
 
             with torch.inference_mode():
-                outputs = self.model.generate(**inputs, max_length=250)
+                outputs = self.model.generate(**inputs, max_new_tokens=128)
 
             result = self.processor.tokenizer.decode(
                 outputs[0], skip_special_tokens=True
