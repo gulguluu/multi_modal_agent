@@ -89,6 +89,6 @@ def health() -> dict:
 
 
 if __name__ == "__main__":
-    # Support both SSE and WebSocket transports
-    logger.info("Starting Search MCP Server with SSE and WebSocket transports...")
-    server.run(host="0.0.0.0", port=8002, transport=["sse", "ws"])
+    # Use SSE transport as it's more widely supported
+    logger.info("Starting Search MCP Server with SSE transport...")
+    server.run(host="0.0.0.0", port=8002, transport="sse")
