@@ -55,7 +55,7 @@ class ImageAnalyzer:
             raise
 
     def analyze(
-        self, image_path: str, prompt: str = "Identify the logo shown in this image?"
+        self, image_path: str, prompt: str = "Identify the logo shown in this image? Be specific and concise. Only name the company."
     ) -> str:
         """Analyze an image to identify its content.
 
@@ -74,6 +74,10 @@ class ImageAnalyzer:
             image = Image.open(image_path).convert("RGB")
             messages = [
                 {
+                    "role": "system",
+                    "content": "You are a logo identification expert. Identify company logos accurately and respond with ONLY the company name. For example, if shown the Apple logo, respond with just 'Apple'."
+                },
+                {
                     "role": "user",
                     "content": [{"type": "image"}, {"type": "text", "text": prompt}],
                 }
@@ -86,11 +90,24 @@ class ImageAnalyzer:
             ).to(self.device)
 
             with torch.inference_mode():
-                outputs = self.model.generate(**inputs, max_new_tokens=50)
+                outputs = self.model.generate(**inputs, max_new_tokens=250)
 
             result = self.processor.tokenizer.decode(
                 outputs[0], skip_special_tokens=True
             )
+            
+            if "assistant" in result.lower():
+                parts = result.split("assistant")
+                if len(parts) > 1:
+                    result = parts[1].strip()
+            
+            result = result.strip()
+            if result.startswith(":"):
+                result = result[1:].strip()
+            result = result.strip()
+            if result.startswith(":"):
+                result = result[1:].strip()
+                
             logger.info(f"Analysis result: {result}")
             return result
         except Exception as e:
@@ -146,7 +163,5 @@ def health() -> dict:
 
 
 if __name__ == "__main__":
-    # Use SSE transport as it's more widely supported
     logger.info("Starting Vision Model MCP Server with FastMCP 2.0.0...")
-    # In FastMCP 2.0.0, the run method only takes the transport type
     server.run("sse")

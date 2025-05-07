@@ -4,6 +4,7 @@ Search MCP Server
 Provides web search capabilities through the Model Context Protocol
 """
 
+import json
 import logging
 from typing import Any, Dict, List
 
@@ -39,33 +40,69 @@ def search_web(query: str) -> str:
 
 
 @server.tool()
-def search_company_info(company_name: str) -> Dict[str, Any]:
+def search_company_info(company_name: str) -> str:
     """
-    Search for specific company information.
+    Search for information about a company.
 
     Args:
         company_name: Name of the company to search for
 
     Returns:
-        Dictionary with company information
+        JSON string with company information
     """
     try:
-        logger.info(f"Searching for company info: {company_name}")
-        hq_query = f"{company_name} headquarters location"
-        hq_result = search_tool.run(hq_query)
-        website_query = f"{company_name} official website"
-        website_result = search_tool.run(website_query)
-        about_query = f"what does {company_name} do business industry"
-        about_result = search_tool.run(about_query)
-        return {
+        if "system" in company_name and "assistant" in company_name:
+            if "assistant" in company_name:
+                parts = company_name.split("assistant")
+                if len(parts) > 1:
+                    company_name = parts[1].strip()
+                    if company_name.startswith(":"):
+                        company_name = company_name[1:].strip()
+                    if "." in company_name:
+                        company_name = company_name.split(".")[0].strip()
+        
+        if len(company_name) > 50:
+            company_name = " ".join(company_name.split()[:3])
+        
+        logger.info(f"Searching for company: {company_name}")
+        
+        query = f"{company_name} company information headquarters website"
+        
+        search_results = search_tool.run(query)
+        
+        headquarters_info = "No information found"
+        website_info = ""
+        about_info = ""
+        
+        if search_results and len(search_results) > 100:
+            if "headquarters" in search_results.lower():
+                sentences = search_results.split(".")
+                for sentence in sentences:
+                    if "headquarters" in sentence.lower():
+                        headquarters_info = sentence.strip() + "."
+                        break
+            else:
+                headquarters_info = search_results[:200]
+            
+            if "www." in search_results or "http" in search_results:
+                import re
+                urls = re.findall(r'(https?://[\w\.-]+|www\.[\w\.-]+)', search_results)
+                if urls:
+                    website_info = urls[0]
+            
+            about_info = search_results[:300] if len(search_results) > 300 else search_results
+        
+        result = {
             "company_name": company_name,
-            "headquarters_info": hq_result,
-            "website_info": website_result,
-            "about_info": about_result,
+            "headquarters_info": headquarters_info,
+            "website_info": website_info,
+            "about_info": about_info
         }
+        
+        return json.dumps(result, indent=2)
     except Exception as e:
-        logger.error(f"Error searching company info: {str(e)}")
-        return {"error": str(e), "company_name": company_name}
+        logger.error(f"Error searching for company info: {str(e)}")
+        return json.dumps({"error": str(e), "company_name": company_name})
 
 
 def get_search_capabilities() -> List[str]:
@@ -89,7 +126,5 @@ def health() -> dict:
 
 
 if __name__ == "__main__":
-    # Use SSE transport as it's more widely supported
     logger.info("Starting Search MCP Server with FastMCP 2.0.0...")
-    # In FastMCP 2.0.0, the run method only takes the transport type
     server.run("sse")

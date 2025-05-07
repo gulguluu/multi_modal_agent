@@ -41,7 +41,6 @@ class MultiModalAgent:
         self.max_retries = 2
         self.retry_delay = 1  # seconds
         
-        # Check network connectivity to servers on startup
         self._check_server_connectivity()
 
     async def analyze_logo(self, image_path: str, is_url: bool = False) -> Dict[str, Any]:
@@ -70,7 +69,6 @@ class MultiModalAgent:
         
         logger.info("Checking server connectivity...")
         
-        # Try DNS resolution
         for hostname, port in servers:
             try:
                 ip_address = socket.gethostbyname(hostname)
@@ -78,7 +76,6 @@ class MultiModalAgent:
             except socket.gaierror:
                 logger.error(f"❌ DNS resolution failed for {hostname}")
         
-        # Try TCP connection
         for hostname, port in servers:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -92,7 +89,6 @@ class MultiModalAgent:
             except Exception as e:
                 logger.error(f"❌ TCP connection error to {hostname}:{port}: {str(e)}")
         
-        # Try HTTP requests
         for hostname, port in servers:
             url = f"http://{hostname}:{port}/health"
             try:
@@ -124,14 +120,11 @@ class MultiModalAgent:
     
     async def _call_mcp_tool(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Optional[Any]:
         """Call an MCP tool with retry logic and proper error handling"""
-        # Extract hostname and port from server_url for diagnostics
         hostname = server_url.replace('http://', '').split(':')[0]
         port = int(server_url.replace('http://', '').split(':')[1]) if ':' in server_url else 80
         
-        # Log diagnostic info before attempting connection
         logger.info(f"Attempting to connect to {hostname}:{port} for tool: {tool_name}")
         
-        # Try a simple TCP connection test before using the MCP client
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(2)
@@ -146,14 +139,10 @@ class MultiModalAgent:
         
         for attempt in range(self.max_retries + 1):
             try:
-                # Create and run a single task for the tool call to avoid
-                # TaskGroup cancellation issues
                 logger.info(f"Connecting to {server_url}/sse (attempt {attempt+1}/{self.max_retries+1})")
-                
-                # Run the tool call in a single task with a timeout
                 result = await asyncio.wait_for(
                     self._run_tool_call(server_url, tool_name, params),
-                    timeout=30.0  # 30 second timeout for more reliability
+                    timeout=30.0
                 )
                 return result
                 
@@ -175,16 +164,11 @@ class MultiModalAgent:
     
     async def _run_tool_call(self, server_url: str, tool_name: str, params: Dict[str, Any]) -> Any:
         """Run a single tool call without using TaskGroups to avoid cancellation issues"""
-        # Create the client
         client = Client(f"{server_url}/sse")
         
         try:
-            # Use the async context manager pattern as recommended in FastMCP docs
             async with client:
-                # Call the tool
                 result = await client.call_tool(tool_name, params)
-                
-                # Print raw response for debugging
                 logger.info(f"Raw response from {tool_name}:")
                 logger.info(f"Response type: {type(result)}")
                 logger.info(f"Response attributes: {dir(result)}")
@@ -202,11 +186,10 @@ class MultiModalAgent:
         result = await self._call_mcp_tool(
             VISION_SERVER_URL,
             "analyze_image",
-            {"image_path": image_path, "prompt": "What company logo is this?"}
+            {"image_path": image_path, "prompt": "Identify the company logo in this image. Be specific and concise."}
         )
         
         if result:
-            # Print raw result for debugging
             print("\n==== RAW VISION SERVER RESPONSE ====")
             print(f"Type: {type(result)}")
             if hasattr(result, '__dict__'):
@@ -214,30 +197,24 @@ class MultiModalAgent:
             print(f"String representation: {str(result)}")
             print("===================================\n")
             
-            # Handle structured response from FastMCP 2.0.0
             try:
                 if hasattr(result, 'content') and result.content:
-                    # If result has content attribute with text items
                     for item in result.content:
-                        # Handle TextContent objects directly
                         if hasattr(item, 'type') and item.type == 'text':
                             company_name = item.text if hasattr(item, 'text') else ''
                             if company_name:
                                 logger.info(f"Detected logo/company: {company_name}")
                                 return company_name
-                        # Handle dictionary-like items
                         elif isinstance(item, dict) and item.get('type') == 'text':
                             company_name = item.get('text', '')
                             if company_name:
                                 logger.info(f"Detected logo/company: {company_name}")
                                 return company_name
                 elif hasattr(result, 'result'):
-                    # If result has a result attribute
                     company_name = str(result.result)
                     logger.info(f"Detected logo/company: {company_name}")
                     return company_name
                 else:
-                    # Fallback to string conversion
                     company_name = str(result)
                     logger.info(f"Detected logo/company: {company_name}")
                     return company_name
@@ -262,7 +239,6 @@ class MultiModalAgent:
         )
         
         if result:
-            # Print raw result for debugging
             print("\n==== RAW SEARCH SERVER RESPONSE ====")
             print(f"Type: {type(result)}")
             if hasattr(result, '__dict__'):
@@ -270,22 +246,22 @@ class MultiModalAgent:
             print(f"String representation: {str(result)}")
             print("===================================\n")
             
-            # Handle structured response from FastMCP 2.0.0
             try:
                 if hasattr(result, 'content') and result.content:
-                    # If result has content attribute with text items
                     for item in result.content:
-                        # Handle TextContent objects directly
                         if hasattr(item, 'type') and item.type == 'text':
-                            return item.text if hasattr(item, 'text') else f"No information found for {company_name}."
-                        # Handle dictionary-like items
+                            json_text = item.text if hasattr(item, 'text') else f"No information found for {company_name}."
+                            try:
+                                import json
+                                info = json.loads(json_text)
+                                return json_text
+                            except json.JSONDecodeError:
+                                return json_text
                         elif isinstance(item, dict) and item.get('type') == 'text':
                             return item.get('text', f"No information found for {company_name}.")
                 elif hasattr(result, 'result'):
-                    # If result has a result attribute
                     return str(result.result)
                 else:
-                    # Fallback to string conversion
                     return str(result)
             except Exception as e:
                 logger.error(f"Error extracting company info from result: {str(e)}")
