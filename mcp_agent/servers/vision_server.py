@@ -65,9 +65,7 @@ class ImageAnalyzer:
             logger.error(f"Error initializing ImageAnalyzer: {str(e)}")
             raise
 
-    def analyze(
-        self, image_path: str, prompt: str = "List all food items visible in this image. Present as a JSON array of strings."
-    ) -> str:
+    def analyze(self, image_path: str, prompt: str = "List all food items visible in this image. Present as a JSON array of strings.") -> str:
         """Analyze an image to identify its content.
 
         Args:
@@ -82,62 +80,45 @@ class ImageAnalyzer:
                 raise FileNotFoundError(f"Image not found: {image_path}")
 
             logger.info(f"Analyzing image: {image_path}")
+            logger.info(f"Using prompt: {prompt}")
+            
+            # Log image details
+            file_size = os.path.getsize(image_path)
+            logger.info(f"Image file size: {file_size} bytes")
+            
+            # Open and convert image
             image = Image.open(image_path).convert("RGB")
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are a professional food recognition expert specializing in recipe ingredients. "
-                               "Your task is to identify all food items in the image and list them as a JSON array of strings. "
-                               "For example, if shown food items, respond with ['apple', 'banana', 'milk']. "
-                               "Be specific and concise. Focus on identifying individual ingredients rather than prepared dishes. "
-                               "Include common cooking ingredients like vegetables, fruits, meats, dairy, spices, and pantry staples. "
-                               "If you see prepared food, list the main visible ingredients instead of the dish name. "
-                               "For packaged foods, identify the main ingredient (e.g., 'pasta' not 'pasta box'). "
-                               "If you're uncertain about an item, include your best guess. "
-                               "IMPORTANT: Always respond with a valid JSON array, even if empty ([])."
-                },
-                {
-                    "role": "user",
-                    "content": [{"type": "image"}, {"type": "text", "text": prompt}],
-                }
-            ]
             
-            text = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
+            # Using the proper chat template as provided
+            messages = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt}]}]
             
-            inputs = self.processor(
-                text=[text], images=[image], return_tensors="pt"
-            ).to(self.device)
-
-            with torch.inference_mode():
-                outputs = self.model.generate(**inputs, max_new_tokens=500)
-
-            result = self.processor.tokenizer.decode(
-                outputs[0], skip_special_tokens=True
-            )
+            logger.info(f"Messages to model: {messages}")
             
-            if "assistant" in result.lower():
-                parts = result.split("assistant")
-                if len(parts) > 1:
-                    result = parts[1].strip()
-            result = result.strip()
-            if result.startswith(":"):
-                result = result[1:].strip()
-            if "." in result:
-                result = result.split(".")[0].strip()
-            if "," in result:
-                result = result.split(",")[0].strip()
+            # Apply chat template
+            text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            logger.info(f"Applied chat template: {text[:100]}...")
             
-            if result.lower() == "none" or not result or result.lower() == "i don't know" or result.lower() == "unknown":
-                result = "[]"
-                logger.warning("Vision model failed to identify the food items, using fallback: empty array")
+            # Process inputs
+            inputs = self.processor(text=[text], images=[image], return_tensors="pt").to(self.device)
             
-            logger.info(f"Analysis result: {result}")
+            # Generate output
+            logger.info("Generating response from model...")
+            outputs = self.model.generate(**inputs, max_length=250)
+            
+            # Decode the output
+            result = self.processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Log the raw result
+            logger.info(f"RAW MODEL OUTPUT: {result}")
+            print(f"\n==== RAW VISION MODEL OUTPUT ====\n{result}\n==== END RAW OUTPUT ====\n")
+            
             return result
+            
         except Exception as e:
             logger.error(f"Error analyzing image: {str(e)}")
-            return f"Error analyzing image: {str(e)}"
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return "[]"
 
 
 analyzer = ImageAnalyzer()
@@ -175,18 +156,12 @@ def identify_food_items(image_path: str) -> str:
         JSON array of identified food items as a string
     """
     logger.info(f"Identifying food items for recipes: {image_path}")
+    print(f"\n==== IDENTIFYING FOOD ITEMS IN IMAGE: {image_path} ====\n")
     
     # Verify image exists
     if not os.path.exists(image_path):
         logger.error(f"Image not found: {image_path}")
         return "[]"
-        
-    # Log image details
-    try:
-        file_size = os.path.getsize(image_path)
-        logger.info(f"Image file size: {file_size} bytes")
-    except Exception as e:
-        logger.warning(f"Could not get image file details: {str(e)}")
     
     # Use a specialized prompt for food detection
     specialized_prompt = """Carefully examine this image and identify ALL food items and ingredients visible.
@@ -200,34 +175,10 @@ def identify_food_items(image_path: str) -> str:
     # Use the analyzer with the specialized prompt
     result = analyzer.analyze(image_path, specialized_prompt)
     
-    # Simple JSON validation with minimal processing
-    try:
-        import json
-        import re
-        
-        # Check if the result already looks like a JSON array
-        if result.strip().startswith('[') and result.strip().endswith(']'):
-            try:
-                # Try to parse as JSON
-                json.loads(result)
-                # If it parses successfully, keep it as is
-            except json.JSONDecodeError:
-                # If it looks like JSON but isn't valid, do minimal cleanup
-                logger.info(f"Basic cleanup of JSON-like result: {result[:50]}...")
-                # Try to extract a valid JSON array pattern
-                json_array_match = re.search(r'\[.*?\]', result)
-                if json_array_match:
-                    result = json_array_match.group(0)
-        else:
-            # If it's not in JSON format, wrap it in an array
-            logger.info(f"Result not in JSON format, returning as-is: {result}...")
-            # The search and LLM components can handle non-JSON text
-            
-    except Exception as e:
-        logger.error(f"Error processing food items result: {str(e)}")
-        result = "[]"
+    # Print the raw result for debugging
+    print(f"\n==== RAW RESULT FROM FOOD ITEM DETECTION ====\n{result}\n==== END RAW RESULT ====\n")
     
-    logger.info(f"Identified food items: {result}")
+    # Return the raw result - let the client handle any parsing
     return result
 
 
