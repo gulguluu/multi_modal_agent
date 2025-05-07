@@ -90,5 +90,6 @@ def health() -> dict:
 
 if __name__ == "__main__":
     # Use SSE transport as it's more widely supported
-    logger.info("Starting Search MCP Server with SSE transport...")
-    server.run(host="0.0.0.0", port=8002, transport="sse")
+    logger.info("Starting Search MCP Server with FastMCP 2.0.0...")
+    # In FastMCP 2.0.0, the run method doesn't take host/port as separate arguments
+    server.run("0.0.0.0", 8002, transport="sse")
