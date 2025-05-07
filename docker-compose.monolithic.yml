@@ -1,0 +1,26 @@
+version: '3'
+
+services:
+  monolithic-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.monolithic
+    image: monolithic-agent:latest
+    container_name: monolithic-agent
+    volumes:
+      - ./data:/app/data  # For image files
+      - monolithic-cache:/app/.cache/huggingface  # For model cache
+    privileged: true
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      - IPEX_OPTIMIZE=1
+      - IPEX_MERGE_FUSION=1
+      - IPEX_AUTO_TUNE=1
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - HF_HOME=/app/.cache/huggingface
+      - HF_HUB_CACHE=/app/.cache/huggingface
+    command: ["--url", "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Google_2015_logo.svg/1200px-Google_2015_logo.svg.png"]
+
+volumes:
+  monolithic-cache:
