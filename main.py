@@ -4,7 +4,10 @@
 
 import logging
 import os
-from typing import Any, Dict, Optional
+import argparse
+import requests
+import tempfile
+from typing import Any, Dict, Optional, Union
 
 import intel_extension_for_pytorch as ipex
 import torch
@@ -55,7 +58,7 @@ class ImageAnalyzer:
             raise
 
     def analyze(
-        self, image_path: str, prompt: str = "Identify the logo shown in this image?"
+        self, image_path: str, prompt: str = "Identify the company logo shown in this image. Respond with ONLY the company name."
     ) -> str:
         """Analyze an image to identify its content.
 
@@ -73,6 +76,14 @@ class ImageAnalyzer:
             image = Image.open(image_path).convert("RGB")
             messages = [
                 {
+                    "role": "system",
+                    "content": "You are a logo identification expert specializing in modern technology companies. "
+                               "Identify company logos accurately and respond with ONLY the company name. "
+                               "For example, if shown a logo, respond with just the company name like 'Apple' or 'Microsoft'. "
+                               "Be specific and concise. Provide only the company name without any explanations. "
+                               "Never respond with 'None' or 'I don't know'. If you're uncertain, make your best guess."
+                },
+                {
                     "role": "user",
                     "content": [{"type": "image"}, {"type": "text", "text": prompt}],
                 }
@@ -85,26 +96,99 @@ class ImageAnalyzer:
             ).to(self.device)
 
             with torch.inference_mode():
-                outputs = self.model.generate(**inputs, max_length=250)
+                outputs = self.model.generate(**inputs, max_length=500)
 
-            return self.processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            result = self.processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Clean up the result
+            result = result.strip()
+            if "\n" in result:
+                # Take the first line if there are multiple lines
+                result = result.split("\n")[0].strip()
+                
+            # Remove common prefixes that the model might add
+            prefixes_to_remove = [
+                "The logo is ", "This is the logo of ", "The company is ", 
+                "This is a ", "I can see the logo of ", "The image shows ",
+                "The logo belongs to ", "This logo is from "
+            ]
+            for prefix in prefixes_to_remove:
+                if result.lower().startswith(prefix.lower()):
+                    result = result[len(prefix):].strip()
+            
+            # Handle common failure cases
+            if result.lower() == "none" or not result or result.lower() == "i don't know" or result.lower() == "unknown":
+                # Just use a generic fallback
+                result = "Unknown Logo"
+                logger.warning("Vision model failed to identify the logo, using fallback: Unknown Logo")
+            
+            logger.info(f"Analysis result: {result}")
+            return result
         except Exception as e:
             logger.error(f"Error analyzing image: {str(e)}")
             return f"Error analyzing image: {str(e)}"
 
 
-def image_tool_fn(image_path: str) -> str:
+def download_image(url: str) -> str:
+    """Download an image from a URL and save it to a temporary file.
+    
+    Args:
+        url: URL of the image to download
+        
+    Returns:
+        Path to the downloaded image file
+    """
+    try:
+        logger.info(f"Downloading image from URL: {url}")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, stream=True)
+        response.raise_for_status()
+        
+        # Create a temporary file with .png extension
+        fd, temp_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        
+        # Write the image to the temporary file
+        with open(temp_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+                
+        logger.info(f"Image downloaded to: {temp_path}")
+        return temp_path
+    except Exception as e:
+        logger.error(f"Error downloading image: {str(e)}")
+        raise
+
+def image_tool_fn(image_path_or_url: str) -> str:
     """Tool function to analyze an image and identify logos/content.
 
     Args:
-        image_path: Path to the image file
+        image_path_or_url: Path to the image file or URL
 
     Returns:
         Description of the identified logo/content
     """
     try:
+        # Check if the input is a URL
+        if image_path_or_url.startswith("http"):
+            image_path = download_image(image_path_or_url)
+        else:
+            image_path = image_path_or_url
+            
         analyzer = ImageAnalyzer()
-        return analyzer.analyze(image_path)
+        result = analyzer.analyze(image_path)
+        
+        # Clean up temporary file if it was downloaded
+        if image_path_or_url.startswith("http") and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+                logger.info(f"Removed temporary file: {image_path}")
+            except Exception as e:
+                logger.warning(f"Failed to remove temporary file: {str(e)}")
+                
+        return result
     except Exception as e:
         logger.error(f"Error in image_tool_fn: {str(e)}")
         return f"Error analyzing image: {str(e)}"
@@ -117,7 +201,7 @@ def load_local_llm():
         HuggingFacePipeline: Configured language model pipeline
     """
     try:
-        model_id = "HuggingFaceH4/zephyr-7b-beta"
+        model_id = "Qwen/Qwen2.5-3B-Instruct"
         logger.info(f"Loading language model: {model_id}")
 
         tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
@@ -247,10 +331,19 @@ def analyze_logo(image_path: str) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     try:
-        image_path = "./logo1.png"
-
-        print("🧠 Analyzing image...")
-        result = image_tool_fn(image_path)
+        # Parse command-line arguments
+        parser = argparse.ArgumentParser(description="Multi-Modal Agent for Logo Recognition")
+        group = parser.add_mutually_exclusive_group(required=True)
+        group.add_argument("--image", type=str, help="Path to the logo image file")
+        group.add_argument("--url", type=str, help="URL of the logo image")
+        parser.add_argument("--debug", action="store_true", help="Enable debug output")
+        args = parser.parse_args()
+        
+        # Set the image path or URL
+        image_source = args.url if args.url else args.image
+        
+        print("🧠 Analyzing image...", image_source)
+        result = image_tool_fn(image_source)
         print("✅ Detected logo/company name:", result)
 
         query = f"Identify the company shown in the image as '{result}' and give me its details like name, headquarters, website, and what it does."
@@ -263,3 +356,5 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error in main execution: {str(e)}")
         print(f"Error: {str(e)}")
+        import traceback
+        traceback.print_exc()

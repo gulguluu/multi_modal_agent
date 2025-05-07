@@ -26,7 +26,7 @@ class LLMProcessor:
 
     def __init__(
         self,
-        model_id: str = "HuggingFaceH4/zephyr-7b-beta",
+        model_id: str = "Qwen/Qwen2.5-3B-Instruct",
         device: Optional[str] = None,
     ):
         """Initialize the LLM processor with the specified model.
