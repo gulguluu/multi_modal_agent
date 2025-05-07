@@ -54,7 +54,7 @@ class LLMProcessor:
                 "text-generation",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                max_new_tokens=256,  # Reduced from 512 for better performance
+                max_new_tokens=256,
                 temperature=0.2,
                 top_p=0.95,
                 do_sample=True,
@@ -155,25 +155,6 @@ def react_agent_prompt() -> str:
     """
 
 
-@server.resource("data://health")
-def health() -> dict:
-    """Health check endpoint for Docker healthchecks"""
-    model_loaded = hasattr(llm_processor, "model") and llm_processor.model is not None
-    test_message = (
-        "Model loaded and ready" if model_loaded else "Model not loaded properly"
-    )
-    return {
-        "status": "healthy" if model_loaded else "unhealthy",
-        "server": "llm",
-        "model": llm_processor.model_id,
-        "device": llm_processor.device,
-        "test": test_message,
-        "hello": "world",
-    }
-
-
 if __name__ == "__main__":
-    # Use SSE transport as it's more widely supported
     logger.info("Starting LLM MCP Server with FastMCP 2.0.0...")
-    # In FastMCP 2.0.0, the run method only takes the transport type
     server.run("sse")

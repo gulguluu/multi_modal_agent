@@ -6,7 +6,7 @@ Provides web search capabilities through the Model Context Protocol
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import List
 
 from fastmcp import FastMCP
 from langchain_community.tools import DuckDuckGoSearchRun
@@ -65,15 +65,11 @@ def search_company_info(company_name: str) -> str:
             company_name = " ".join(company_name.split()[:3])
         
         logger.info(f"Searching for company: {company_name}")
-        
         query = f"{company_name} company information headquarters website"
-        
         search_results = search_tool.run(query)
-        
         headquarters_info = "No information found"
         website_info = ""
         about_info = ""
-        
         if search_results and len(search_results) > 100:
             if "headquarters" in search_results.lower():
                 sentences = search_results.split(".")
@@ -83,22 +79,18 @@ def search_company_info(company_name: str) -> str:
                         break
             else:
                 headquarters_info = search_results[:200]
-            
             if "www." in search_results or "http" in search_results:
                 import re
                 urls = re.findall(r'(https?://[\w\.-]+|www\.[\w\.-]+)', search_results)
                 if urls:
                     website_info = urls[0]
-            
             about_info = search_results[:300] if len(search_results) > 300 else search_results
-        
         result = {
             "company_name": company_name,
             "headquarters_info": headquarters_info,
             "website_info": website_info,
             "about_info": about_info
         }
-        
         return json.dumps(result, indent=2)
     except Exception as e:
         logger.error(f"Error searching for company info: {str(e)}")
@@ -112,17 +104,6 @@ def get_search_capabilities() -> List[str]:
         "Company information search",
         "No API key required",
     ]
-
-
-@server.resource("data://health")
-def health() -> dict:
-    """Health check endpoint for Docker healthchecks"""
-    return {
-        "status": "healthy",
-        "server": "search",
-        "capabilities": ["web search", "company information search"],
-        "hello": "world"
-    }
 
 
 if __name__ == "__main__":

@@ -19,8 +19,9 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-server = FastMCP("VisionServer", host="0.0.0.0", port=8000)
 
+
+server = FastMCP("VisionServer", host="0.0.0.0", port=8000)
 
 class ImageAnalyzer:
     """Analyzes images to identify logos and content using a vision-language model."""
@@ -143,23 +144,6 @@ def get_model_info() -> dict:
         "capabilities": ["logo identification", "image content analysis"],
     }
 
-
-@server.resource("data://health")
-def health() -> dict:
-    """Health check endpoint for Docker healthchecks"""
-    model_loaded = hasattr(analyzer, "model") and analyzer.model is not None
-    test_message = (
-        "Model loaded and ready" if model_loaded else "Model not loaded properly"
-    )
-
-    return {
-        "status": "healthy" if model_loaded else "unhealthy",
-        "server": "vision",
-        "model": "Qwen/Qwen2.5-VL-3B-Instruct",
-        "device": analyzer.device,
-        "test": test_message,
-        "hello": "world",
-    }
 
 
 if __name__ == "__main__":
