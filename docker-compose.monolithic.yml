@@ -10,6 +10,7 @@ services:
     volumes:
       - ./data:/app/data  # For image files
       - monolithic-cache:/app/.cache/huggingface  # For model cache
+    user: root
     privileged: true
     devices:
       - /dev/dri:/dev/dri

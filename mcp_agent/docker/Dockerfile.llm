@@ -4,8 +4,14 @@ WORKDIR /app
 
 COPY ../requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Create cache directory with proper permissions
+RUN mkdir -p /app/.cache/huggingface && \
+    chmod -R 777 /app/.cache
+
 COPY ../servers/llm_server.py /app/servers/
 RUN mkdir -p /app/models
+RUN chmod -R 777 /app/models
 
 EXPOSE 8001
 ENV IPEX_OPTIMIZE=1
