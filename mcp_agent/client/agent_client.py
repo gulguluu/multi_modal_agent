@@ -196,7 +196,7 @@ class MultiModalAgent:
         result = await self._call_mcp_tool(
             VISION_SERVER_URL,
             "analyze_image",
-            {"image_path": image_path, "prompt": "Identify the company logo in this image. Be specific and concise."}
+            {"image_path": image_path, "prompt": "What company logo is this? Identify the exact company name."}
         )
         
         if result:

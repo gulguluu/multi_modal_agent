@@ -41,7 +41,7 @@ class ImageAnalyzer:
             logger.info(f"Loading vision model: {model_name}")
             self.processor = AutoProcessor.from_pretrained(model_name)
             self.model = AutoModelForImageTextToText.from_pretrained(
-                model_name, torch_dtype=torch.float16
+                model_name, torch_dtype=torch.bfloat16
             )
             self.device = device or ("xpu" if torch.xpu.is_available() else "cpu")
             logger.info(f"Using device: {self.device} for vision model")
@@ -49,14 +49,14 @@ class ImageAnalyzer:
 
             if self.device == "xpu":
                 logger.info("Applying IPEX optimizations to vision model")
-                self.model = ipex.optimize(self.model, dtype=torch.float16)
+                #self.model = ipex.optimize(self.model, dtype=torch.float16)
 
         except Exception as e:
             logger.error(f"Error initializing ImageAnalyzer: {str(e)}")
             raise
 
     def analyze(
-        self, image_path: str, prompt: str = "Identify the logo shown in this image? Be specific and concise. Only name the company."
+        self, image_path: str, prompt: str = "What company logo is this? Identify the exact company / product name."
     ) -> str:
         """Analyze an image to identify its content.
 
@@ -76,22 +76,28 @@ class ImageAnalyzer:
             messages = [
                 {
                     "role": "system",
-                    "content": "You are a logo identification expert. Identify company logos accurately and respond with ONLY the company name. For example, if shown the Apple logo, respond with just 'Apple'."
+                    "content": "You are a logo identification expert specializing in modern technology companies. "
+                               "Identify company logos accurately and respond with ONLY the company name. "
+                               "For example, if shown a logo, respond with just the company name like 'Apple' or 'Microsoft'. "
+                               "Be specific and concise. Provide only the company name without any explanations. "
+                               "Never respond with 'None' or 'I don't know'. If you're uncertain, make your best guess."
                 },
                 {
                     "role": "user",
                     "content": [{"type": "image"}, {"type": "text", "text": prompt}],
                 }
             ]
+            
             text = self.processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
             )
+            
             inputs = self.processor(
                 text=[text], images=[image], return_tensors="pt"
             ).to(self.device)
 
             with torch.inference_mode():
-                outputs = self.model.generate(**inputs, max_new_tokens=250)
+                outputs = self.model.generate(**inputs, max_new_tokens=500)
 
             result = self.processor.tokenizer.decode(
                 outputs[0], skip_special_tokens=True
@@ -101,14 +107,18 @@ class ImageAnalyzer:
                 parts = result.split("assistant")
                 if len(parts) > 1:
                     result = parts[1].strip()
+            result = result.strip()
+            if result.startswith(":"):
+                result = result[1:].strip()
+            if "." in result:
+                result = result.split(".")[0].strip()
+            if "," in result:
+                result = result.split(",")[0].strip()
             
-            result = result.strip()
-            if result.startswith(":"):
-                result = result[1:].strip()
-            result = result.strip()
-            if result.startswith(":"):
-                result = result[1:].strip()
-                
+            if result.lower() == "none" or not result or result.lower() == "i don't know" or result.lower() == "unknown":
+                result = "Unknown Logo"
+                logger.warning("Vision model failed to identify the logo, using fallback: Unknown Logo")
+            
             logger.info(f"Analysis result: {result}")
             return result
         except Exception as e:

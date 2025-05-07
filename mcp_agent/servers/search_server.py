@@ -64,8 +64,20 @@ def search_company_info(company_name: str) -> str:
         if len(company_name) > 50:
             company_name = " ".join(company_name.split()[:3])
         
-        logger.info(f"Searching for company: {company_name}")
-        query = f"{company_name} company information headquarters website"
+        # Handle case where logo couldn't be identified
+        if company_name.lower() == "unknown logo" or company_name.lower() == "none":
+            return json.dumps({
+                "company_name": company_name,
+                "headquarters_info": "Could not identify the logo with confidence",
+                "website_info": "",
+                "about_info": "The logo could not be identified with confidence. Please try a clearer image."
+            }, indent=2)
+            
+        # Construct a more comprehensive search query for any company
+        query = f"{company_name} company official information headquarters website"
+        
+        logger.info(f"Searching for company: {company_name} with query: {query}")
+        # Search the web
         search_results = search_tool.run(query)
         headquarters_info = "No information found"
         website_info = ""
