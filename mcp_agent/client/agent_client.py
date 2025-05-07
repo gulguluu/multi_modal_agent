@@ -219,7 +219,14 @@ class MultiModalAgent:
                 if hasattr(result, 'content') and result.content:
                     # If result has content attribute with text items
                     for item in result.content:
-                        if item.get('type') == 'text':
+                        # Handle TextContent objects directly
+                        if hasattr(item, 'type') and item.type == 'text':
+                            company_name = item.text if hasattr(item, 'text') else ''
+                            if company_name:
+                                logger.info(f"Detected logo/company: {company_name}")
+                                return company_name
+                        # Handle dictionary-like items
+                        elif isinstance(item, dict) and item.get('type') == 'text':
                             company_name = item.get('text', '')
                             if company_name:
                                 logger.info(f"Detected logo/company: {company_name}")
@@ -268,7 +275,11 @@ class MultiModalAgent:
                 if hasattr(result, 'content') and result.content:
                     # If result has content attribute with text items
                     for item in result.content:
-                        if item.get('type') == 'text':
+                        # Handle TextContent objects directly
+                        if hasattr(item, 'type') and item.type == 'text':
+                            return item.text if hasattr(item, 'text') else f"No information found for {company_name}."
+                        # Handle dictionary-like items
+                        elif isinstance(item, dict) and item.get('type') == 'text':
                             return item.get('text', f"No information found for {company_name}.")
                 elif hasattr(result, 'result'):
                     # If result has a result attribute
