@@ -8,7 +8,7 @@ import json
 import logging
 from typing import List, Dict, Any
 
-from duckduckgo_search import DDGS
+from langchain_community.tools import DuckDuckGoSearchRun
 from fastmcp import FastMCP
 
 logging.basicConfig(
@@ -16,8 +16,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 server = FastMCP("SearchServer", host="0.0.0.0", port=8002)
-# Initialize DuckDuckGo search client
-ddgs = DDGS()
+# Initialize DuckDuckGo search tool
+search_tool = DuckDuckGoSearchRun()
 
 
 @server.tool()
@@ -33,23 +33,11 @@ def search_web(query: str) -> str:
     """
     logger.info(f"Searching web for: {query}")
     try:
-        # Get search results using the DDGS client directly
-        results = ddgs.text(query, max_results=10)
-        
-        # Debug: Print the raw results
-        logger.info(f"Raw search results: {results}")
-        
-        # Format the results as a single text string
-        if results:
-            formatted_results = "\n\n".join(
-                [f"{result['title']}\n{result['href']}\n{result['body']}" for result in results]
-            )
-            # Debug: Print the formatted results
-            logger.info(f"Formatted search results (first 200 chars): {formatted_results}...")
-
-            return formatted_results
-        else:
-            return "No search results found."
+        # Use LangChain's DuckDuckGoSearchRun tool
+        search_results = search_tool.invoke(query)
+        logger.info(f"Search results length: {len(search_results) if search_results else 0}")
+        logger.info(f"Search results preview: {search_results[:200] if search_results else 'None'}...")
+        return search_results
     except Exception as e:
         logger.error(f"Error searching web: {str(e)}")
         return "No search results found."
@@ -100,9 +88,8 @@ def search_recipes(ingredients: str) -> str:
     logger.info(f"Recipe search query: {query}")
     search_results = search_web(query)
     
-    # Debug: Log the length of search results
-    logger.info(f"Recipe search results length: {len(search_results) if search_results else 0}")
-    logger.info(f"Recipe search results preview: {search_results if search_results else 'None'}...")
+    # Log basic info about search results
+    logger.info(f"Recipe search results received, length: {len(search_results) if search_results else 0}")
 
     # Extract recipe names from search results
     recipes = []
@@ -121,12 +108,7 @@ def search_recipes(ingredients: str) -> str:
         "full_results": search_results[:1000] if search_results else "",
     }
     
-    # Debug: Log the result and its size
-    response = json.dumps(result)
-    logger.info(f"Recipe search response size: {len(response)}")
-    logger.info(f"Recipe search recipes found: {len(recipes)}")
-    
-    return response
+    return json.dumps(result)
 
 
 def get_search_capabilities() -> List[str]:
