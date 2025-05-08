@@ -149,24 +149,35 @@ You can add your own food images to this directory, or use the sample image incl
 
 ### Running with Docker Compose
 
-1. Build and start the services:
+1. Build all services:
 
 ```bash
 cd mcp_agent/docker
 docker-compose build
-docker-compose up -d vision-server llm-server search-server
 ```
 
-2. Run the client with a food image:
+2. Start all the server components:
 
 ```bash
-docker-compose run client python /app/client/agent_client.py --image /app/data/ingredients.jpg
+docker-compose up -d
+```
+
+3. Build the client (if you've made changes to the client code):
+
+```bash
+docker-compose build client
+```
+
+4. Run the client with a food image:
+
+```bash
+docker-compose run client --image /app/data/ingredients.jpg
 ```
 
 Or with a URL to a food image:
 
 ```bash
-docker-compose run client python /app/client/agent_client.py --url https://images.unsplash.com/photo-1606787366850-de6330128bfc
+docker-compose run client --url https://images.unsplash.com/photo-1606787366850-de6330128bfc
 ```
 
 3. The system will:
