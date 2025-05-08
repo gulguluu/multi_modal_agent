@@ -225,14 +225,26 @@ class MultiModalAgent:
         else:
             search_result_text = ""
         
+        # Debug: Show what search results we're getting
         print(f"Search results found: {len(search_result_text) > 100}")
+        print(f"Search result type: {type(search_result)}")
+        print(f"Search result text type: {type(search_result_text)}")
+        print(f"Search result preview: {str(search_result_text)[:100]}...")
         
         # Step 2: Generate a recipe based on the ingredients and search results
         print("\n==== GENERATING RECIPE SUGGESTION ====\n")
         
         # Prepare parameters for the LLM
+        # Ensure ingredients is a string, not a list
+        if isinstance(food_items, list):
+            import json
+            food_items = json.dumps(food_items)
+        elif isinstance(food_items, str) and food_items.startswith('[') and food_items.endswith(']'):
+            # It's already a JSON string, which is fine
+            pass
+        
         llm_params = {
-            "ingredients": food_items,
+            "ingredients": str(food_items),
             "max_tokens": 1000
         }
         
