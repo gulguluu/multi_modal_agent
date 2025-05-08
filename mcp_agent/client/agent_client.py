@@ -166,17 +166,43 @@ class MultiModalAgent:
         if food_items_text:
             try:
                 import json
-                food_items = json.loads(food_items_text)
-                if isinstance(food_items, list):
-                    # Make items unique and sort them
-                    food_items = sorted(list(set(food_items)))
-                    food_items_text = json.dumps(food_items)
-                    print(f"✅ Detected food items: {food_items_text}")
+                # Check if it's already a valid JSON string
+                if food_items_text.strip().startswith('[') and food_items_text.strip().endswith(']'):
+                    try:
+                        food_items = json.loads(food_items_text)
+                        if isinstance(food_items, list):
+                            # Make items unique and sort them
+                            food_items = sorted(list(set(food_items)))
+                            food_items_text = json.dumps(food_items)
+                            print(f"✅ Detected food items: {food_items_text}")
+                        else:
+                            print(f"Detected items (not a list): {food_items_text}")
+                    except json.JSONDecodeError:
+                        # It looks like JSON but isn't valid, try to extract the list manually
+                        import re
+                        matches = re.findall(r'"([^"]+)"', food_items_text)
+                        if matches:
+                            unique_items = sorted(list(set(matches)))
+                            food_items_text = json.dumps(unique_items)
+                            print(f"✅ Manually extracted and deduplicated food items: {food_items_text}")
+                        else:
+                            print(f"Detected items (not valid JSON and couldn't extract): {food_items_text}")
                 else:
-                    print(f"Detected items (not a list): {food_items_text}")
-            except json.JSONDecodeError:
-                # For invalid JSON, just use the text as is
-                print(f"Detected items (not valid JSON): {food_items_text}")
+                    print(f"Detected items (not in JSON format): {food_items_text}")
+            except Exception as e:
+                # For any errors, just use the text as is
+                print(f"Detected items (error processing): {food_items_text}. Error: {str(e)}")
+                # Try one last attempt to extract items if it looks like a list
+                if '[' in food_items_text and ']' in food_items_text:
+                    try:
+                        import re
+                        matches = re.findall(r'"([^"]+)"', food_items_text)
+                        if matches:
+                            unique_items = sorted(list(set(matches)))
+                            food_items_text = json.dumps(unique_items)
+                            print(f"✅ Last-resort extraction of food items: {food_items_text}")
+                    except:
+                        pass
                 
             return food_items_text
         
@@ -192,17 +218,38 @@ class MultiModalAgent:
         
         # Parse the food items to ensure we're using deduplicated list
         import json
-        try:
-            # Parse the JSON string to get the list of food items
-            food_items_list = json.loads(food_items)
-            if isinstance(food_items_list, list):
-                # Ensure the list is deduplicated and sorted
-                food_items_list = sorted(list(set(food_items_list)))
-                # Convert back to JSON string
-                food_items = json.dumps(food_items_list)
-        except json.JSONDecodeError:
-            # If it's not valid JSON, use as is
-            pass
+        import re
+        
+        # First, try to extract food items if it's a string that looks like JSON
+        if isinstance(food_items, str) and '[' in food_items and ']' in food_items:
+            try:
+                # Try to parse as JSON
+                food_items_list = json.loads(food_items)
+                if isinstance(food_items_list, list):
+                    # Deduplicate and sort
+                    food_items_list = sorted(list(set(food_items_list)))
+                    food_items = json.dumps(food_items_list)
+                    print(f"✅ Deduplicated food items: {food_items}")
+            except json.JSONDecodeError:
+                # If it's not valid JSON, try to extract items using regex
+                matches = re.findall(r'"([^"]+)"', food_items)
+                if matches:
+                    unique_items = sorted(list(set(matches)))
+                    food_items = json.dumps(unique_items)
+                    print(f"✅ Manually extracted and deduplicated food items: {food_items}")
+        elif isinstance(food_items, list):
+            # If it's already a list, deduplicate and sort
+            food_items = json.dumps(sorted(list(set(food_items))))
+            print(f"✅ Deduplicated food items list: {food_items}")
+        else:
+            print(f"⚠️ Unable to deduplicate food items: {food_items[:100]}...")
+            # Try one last attempt with regex if it looks like it might contain items
+            if isinstance(food_items, str) and '"' in food_items:
+                matches = re.findall(r'"([^"]+)"', food_items)
+                if matches:
+                    unique_items = sorted(list(set(matches)))
+                    food_items = json.dumps(unique_items)
+                    print(f"✅ Last-resort extraction of food items: {food_items}")
         
         # Step 1: Search for recipes with the identified ingredients
         print("\n==== SEARCHING FOR RECIPES ====\n")
@@ -281,15 +328,37 @@ class MultiModalAgent:
         print(f"\nLLM parameters: {llm_params}")
         print(f"Ingredients type: {type(llm_params['ingredients'])}")
         
-        # Ensure all parameters are strings before calling the LLM server
-        # This is a final safety check to prevent type errors
-        safe_params = {}
-        for key, value in llm_params.items():
-            if not isinstance(value, str) and key != "max_tokens":
+        # Create a completely new parameters dictionary with only string values
+        # This is a direct approach to prevent type errors
+        safe_params = {
+            "ingredients": str(llm_params.get("ingredients", "")),
+            "max_tokens": llm_params.get("max_tokens", 1000),
+            # Always provide a default search_results as a string
+            "search_results": "No specific recipes found for these ingredients."
+        }
+        
+        # Handle search_results separately to ensure it's a string
+        if "search_results" in llm_params:
+            search_results_value = llm_params["search_results"]
+            # Force conversion to string regardless of type
+            if isinstance(search_results_value, dict):
+                try:
+                    import json
+                    search_results_value = json.dumps(search_results_value)
+                except:
+                    search_results_value = str(search_results_value)
+            # Always use str() as a final safety measure
+            safe_params["search_results"] = str(search_results_value)[:1000]
+        
+        # Debug the final parameters
+        print(f"Final LLM parameters types: ingredients={type(safe_params['ingredients'])}, search_results={type(safe_params['search_results'])}")
+        print(f"Search results parameter is a dictionary? {isinstance(safe_params['search_results'], dict)}")
+        # Extra safety check
+        for key, value in safe_params.items():
+            if key != 'max_tokens' and not isinstance(value, str):
+                print(f"WARNING: {key} is not a string! Converting now.")
                 safe_params[key] = str(value)
-            else:
-                safe_params[key] = value
-                
+        
         # Call the LLM server to generate a recipe
         recipe_result = await self._call_mcp_tool(
             LLM_SERVER_URL,
