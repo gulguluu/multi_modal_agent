@@ -198,17 +198,65 @@ The system is designed to be simple yet effective, providing a practical example
 
 ## 🔁 Recipe Generation Example
 
+### Sample Input Image
+
+Here's the sample image included in the repository (`data/ingredients.jpg`):
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/gulguluu/multi_modal_agent/main/mcp_agent/data/ingredients.jpg" alt="Sample Ingredients" width="400"/>
+</p>
+
+### Processing Steps
+
 1. **Image Analysis**:
    ```
-   Input: ingredients.jpg (image of tomatoes, onions, chicken, garlic)
-   Output: ["tomatoes", "onions", "chicken", "garlic"]
+   Input: ingredients.jpg (image of vegetables including bell peppers, broccoli, etc.)
+   Output: ["avocado", "bell peppers", "broccoli", "cabbage", "cauliflower", "cucumbers", "eggplant", "garlic", "green bell peppers", "green onions", "lettuce", "onions", "red bell peppers", "red onions", "yellow bell peppers", "zucchini"]
    ```
 
 2. **Recipe Search**:
    ```
-   Input: "tomatoes, onions, chicken, garlic"
+   Input: "avocado, bell peppers, broccoli, cabbage, cauliflower, cucumbers, eggplant, garlic..."
    Output: [Search results for recipes with these ingredients]
    ```
+
+### Sample Output
+
+Running the client with the sample image produces a result like this:
+
+```
+🧠 Initializing Multi-Modal Recipe Agent...
+🍽️ Analyzing food image file: /app/data/ingredients.jpg
+✅ Detected food items
+
+🍳 Recipe Suggestion:
+Recipe Name: Bell Pepper Medley with Herbs and Veggies
+
+Brief Description: This vibrant medley of colorful bell peppers is paired with crisp vegetables like cucumber and onion for a refreshing and healthy side dish.
+
+Ingredients List:
+- 1 red bell pepper, chopped
+- 1 yellow bell pepper, chopped
+- 1 green bell pepper, chopped
+- 2 zucchini, sliced
+- 2 red onions, quartered
+- 2 cloves garlic, crushed and peeled
+- 2 tablespoons olive oil
+- 1 teaspoon chopped fresh basil
+- Ground black pepper to taste
+- Freshly grated Parmesan cheese (optional)
+
+Simple Step-by-Step Instructions:
+1. Preheat oven to 400°F (200°C).
+2. In a large bowl, combine all chopped vegetables, garlic, olive oil, basil, and black pepper.
+3. Transfer the mixture onto a baking sheet lined with parchment paper.
+4. Bake in the preheated oven for about 20 minutes or until the vegetables are tender but still slightly crisp.
+5. Serve hot or at room temperature.
+6. Optionally sprinkle with freshly grated Parmesan cheese before serving.
+
+Cooking Time: 20 minutes
+Servings: 4-6 people
+```
 
 3. **Recipe Generation**:
    ```
