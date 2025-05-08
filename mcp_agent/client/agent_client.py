@@ -152,19 +152,11 @@ class MultiModalAgent:
             logger.error(f"Image not found: {image_path}")
             return "[]"
         
-        # Read the image file as bytes
-        with open(image_path, "rb") as f:
-            image_bytes = f.read()
-        
-        # Convert bytes to base64
-        import base64
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        
         # Call the vision server MCP tool to identify food items
         result = await self._call_mcp_tool(
             VISION_SERVER_URL, 
             "identify_food_items", 
-            {"image": image_b64}
+            {"image_path": image_path}
         )
         
         # Extract food items from the response
