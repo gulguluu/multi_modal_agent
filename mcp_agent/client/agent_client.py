@@ -229,20 +229,13 @@ class MultiModalAgent:
         print(f"Search results found: {len(search_result_text) > 100}")
         print(f"Search result type: {type(search_result)}")
         print(f"Search result text type: {type(search_result_text)}")
-        print(f"Search result preview: {str(search_result_text)[:100]}...")
+        print(f"Search result full: {str(search_result_text)}")
         
         # Step 2: Generate a recipe based on the ingredients and search results
         print("\n==== GENERATING RECIPE SUGGESTION ====\n")
         
         # Prepare parameters for the LLM
-        # Ensure ingredients is a string, not a list
-        if isinstance(food_items, list):
-            import json
-            food_items = json.dumps(food_items)
-        elif isinstance(food_items, str) and food_items.startswith('[') and food_items.endswith(']'):
-            # It's already a JSON string, which is fine
-            pass
-        
+        # Simply stringify the ingredients parameter
         llm_params = {
             "ingredients": str(food_items),
             "max_tokens": 1000
@@ -265,6 +258,10 @@ class MultiModalAgent:
         else:
             # No useful search results, inform the LLM
             llm_params["search_results"] = "No specific recipes found for these ingredients. Please create a recipe based only on the ingredients."
+        
+        # Debug: Show what we're sending to the LLM server
+        print(f"\nLLM parameters: {llm_params}")
+        print(f"Ingredients type: {type(llm_params['ingredients'])}")
         
         # Call the LLM server to generate a recipe
         recipe_result = await self._call_mcp_tool(
