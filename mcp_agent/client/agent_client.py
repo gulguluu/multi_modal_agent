@@ -162,9 +162,25 @@ class MultiModalAgent:
         # Extract the food items from the response
         if result:
             # Get the text content from the MCP response
-            food_items = self._extract_text_from_response(result)
-            print(f"Detected items: {food_items}")
-            return food_items
+            food_items_text = self._extract_text_from_response(result)
+            
+            # Parse the JSON array
+            try:
+                import json
+                food_items_list = json.loads(food_items_text)
+                
+                # Make the list unique and sorted
+                if isinstance(food_items_list, list):
+                    # Remove duplicates and sort alphabetically
+                    unique_items = sorted(list(set(food_items_list)))
+                    food_items_text = json.dumps(unique_items)
+                    print(f"✅ Detected food items: {food_items_text}")
+                else:
+                    print(f"Detected items (not a list): {food_items_text}")
+            except json.JSONDecodeError:
+                print(f"Detected items (not valid JSON): {food_items_text}")
+                
+            return food_items_text
         
         return "[]"
     
@@ -187,7 +203,22 @@ class MultiModalAgent:
         )
         
         # Extract search results text using our helper method
-        search_result_text = self._extract_text_from_response(search_result) if search_result else ""
+        # Make sure we're getting a string, not a dictionary
+        if search_result:
+            if isinstance(search_result, dict) or (hasattr(search_result, '__dict__') and hasattr(search_result, 'to_dict')):
+                # If it's a dictionary or can be converted to one, convert to JSON string
+                try:
+                    import json
+                    if hasattr(search_result, 'to_dict'):
+                        search_result_text = json.dumps(search_result.to_dict())
+                    else:
+                        search_result_text = json.dumps(search_result)
+                except:
+                    search_result_text = str(search_result)
+            else:
+                search_result_text = self._extract_text_from_response(search_result)
+        else:
+            search_result_text = ""
         
         print(f"Search results found: {len(search_result_text) > 100}")
         
