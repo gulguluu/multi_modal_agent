@@ -19,11 +19,21 @@ from langchain_huggingface import HuggingFacePipeline
 from PIL import Image
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
+import warnings
+warnings.filterwarnings("ignore")
+
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.WARNING, 
+    format="%(levelname)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
 
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+logging.getLogger("PIL").setLevel(logging.ERROR)
+logging.getLogger("pyvips").setLevel(logging.ERROR)
+logging.getLogger("_logger.py").setLevel(logging.ERROR)
+logging.getLogger("langchain").setLevel(logging.ERROR)
 
 class ImageAnalyzer:
     """Analyzes images to identify logos and content using the Moondream2 vision-language model."""
@@ -283,7 +293,7 @@ def create_agent():
             agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
             llm_chain=chain,
             handle_parsing_errors=True,
-            verbose=True,
+            verbose=False,
             max_iterations=5,
         )
     except Exception as e:
@@ -319,6 +329,7 @@ def analyze_logo(image_path: str) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     try:
+        # Parse command-line arguments
         parser = argparse.ArgumentParser(
             description="Multi-Modal Agent for Logo Recognition"
         )
@@ -326,19 +337,44 @@ if __name__ == "__main__":
         group.add_argument("--image", type=str, help="Path to the logo image file")
         group.add_argument("--url", type=str, help="URL of the logo image")
         parser.add_argument("--debug", action="store_true", help="Enable debug output")
+        parser.add_argument("--quiet", action="store_true", help="Minimal output")
         args = parser.parse_args()
+        if args.debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+            for handler in logging.getLogger().handlers:
+                handler.setLevel(logging.DEBUG)
+            warnings.filterwarnings("default")
         image_source = args.url if args.url else args.image
-        print("🧠 Analyzing image...", image_source)
+        if not args.quiet:
+            print("\n" + "=" * 60)
+            print("🔍 MULTI-MODAL LOGO RECOGNITION AGENT")
+            print("=" * 60)
+        if not args.quiet:
+            print("\n🧠 Analyzing image...")
+            if len(image_source) > 60:
+                display_source = image_source[:57] + "..."
+            else:
+                display_source = image_source
+            print(f"   Source: {display_source}")
         result = image_tool_fn(image_source)
-        print("✅ Detected logo/company name:", result)
+        if not args.quiet:
+            print(f"\n✅ DETECTED: {result}")
         query = f"Identify the company shown in the image as '{result}' and give me its details like name, headquarters, website, and what it does."
+        if not args.quiet:
+            print("\n🌐 Retrieving company information...")
         agent = create_agent()
-        print("\n🌐 Running agent...")
         response = agent.invoke(query)
-        print("\n🎯 Final Answer:\n", response["output"])
+        if not args.quiet:
+            print("\n📋 COMPANY PROFILE:")
+            print("=" * 60)
+        output = response["output"]
+        if "Final Answer:" in output:
+            output = output.split("Final Answer:")[1].strip()
+        print(output)
+        if not args.quiet:
+            print("\n" + "=" * 60)
     except Exception as e:
-        logger.error(f"Error in main execution: {str(e)}")
-        print(f"Error: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
+        print(f"\n❌ Error: {str(e)}")
+        if args.debug:
+            import traceback
+            traceback.print_exc()
