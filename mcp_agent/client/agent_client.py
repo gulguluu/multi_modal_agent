@@ -281,11 +281,20 @@ class MultiModalAgent:
         print(f"\nLLM parameters: {llm_params}")
         print(f"Ingredients type: {type(llm_params['ingredients'])}")
         
+        # Ensure all parameters are strings before calling the LLM server
+        # This is a final safety check to prevent type errors
+        safe_params = {}
+        for key, value in llm_params.items():
+            if not isinstance(value, str) and key != "max_tokens":
+                safe_params[key] = str(value)
+            else:
+                safe_params[key] = value
+                
         # Call the LLM server to generate a recipe
         recipe_result = await self._call_mcp_tool(
             LLM_SERVER_URL,
             "generate_recipe",
-            llm_params
+            safe_params
         )
         
         # Extract and return the recipe text
