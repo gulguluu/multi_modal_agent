@@ -1,22 +1,23 @@
-# Multi-Modal Agent with MCP Architecture
+# Multi-Modal Recipe Generator with MCP Architecture
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.12%2B-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Intel XPU](https://img.shields.io/badge/Intel-XPU-0071C5)
 ![MCP](https://img.shields.io/badge/MCP-2.0-green)
 
-A production-ready multi-modal agent implementation using the Model Context Protocol (MCP) with a microservices architecture. This project demonstrates how to build a modern, maintainable AI agent that combines vision, language, and search capabilities to analyze images and provide comprehensive information.
+A simple, effective multi-modal agent that generates recipes from food images using the Model Context Protocol (MCP) with a microservices architecture. This project demonstrates how to orchestrate vision, search, and language models to create a practical AI application optimized for Intel GPUs.
 
 ## 🌟 Features
 
-- **Multi-Modal Perception**: Combines vision and language understanding
-- **Microservices Architecture**: Modular, scalable, and maintainable
-- **Intel GPU Optimization**: Accelerated with Intel Extension for PyTorch
-- **ReAct Agent Pattern**: Reasoning and Acting with perception capabilities
-- **Docker Deployment**: Production-ready containerization
-- **Standardized Communication**: Model Context Protocol (MCP) for all components
+- **Food Recognition**: Identifies ingredients in food images using Moondream2 vision model
+- **Recipe Search**: Finds relevant recipes based on identified ingredients using DuckDuckGo
+- **Recipe Generation**: Creates detailed, formatted recipes using Qwen2.5-3B-Instruct
+- **Microservices Architecture**: Modular design with separate vision, search, and LLM servers
+- **Intel GPU Optimization**: Accelerated with Intel Extension for PyTorch (IPEX)
+- **Docker Deployment**: Simple containerization for easy deployment
+- **Standardized Communication**: Model Context Protocol (MCP) for seamless orchestration
 
-## 🏗️ Architecture
+## 📝️ Recipe Generation Architecture
 
 ```mermaid
 flowchart TD
@@ -28,7 +29,7 @@ flowchart TD
     classDef workflowNode fill:#FFD700,stroke:#DAA520,color:black,font-weight:bold
     
     %% Client Application
-    Client["🧠 Multi-Modal Agent"] --> AgentLoop["⚙️ ReAct Loop"] --> MCPClients["🔌 MCP Clients"]
+    Client["🍳 Recipe Generator"] --> MCPClients["🔌 MCP Clients"]
     
     %% MCP Servers
     MCPClients --> VisionServer["👁️ Vision Server"] 
@@ -36,212 +37,249 @@ flowchart TD
     MCPClients --> SearchServer["🔍 Search Server"]
     
     %% Vision Server
-    VisionServer --> VisionModel["Qwen2.5-VL-3B"] 
-    VisionServer -.-> VisionTools["analyze_image"] 
+    VisionServer --> VisionModel["Moondream2"] 
+    VisionServer -.-> VisionTools["identify_food_items"] 
     
     %% LLM Server
-    LLMServer --> LLMModel["Zephyr-7b-beta"] 
-    LLMServer -.-> LLMTools["generate_text"] 
+    LLMServer --> LLMModel["Qwen2.5-3B-Instruct"] 
+    LLMServer -.-> LLMTools["generate_recipe"] 
     
     %% Search Server
     SearchServer --> SearchEngine["DuckDuckGo"] 
-    SearchServer -.-> SearchTools["search_web"] 
+    SearchServer -.-> SearchTools["search_recipes"] 
     
     %% Workflow
-    Image["🖼️ Input Image"] --> VisionServer
-    VisionServer --> |"Logo ID"| Client
-    Client --> |"Query"| LLMServer
-    Client --> |"Search"| SearchServer
-    Client --> Result["📊 Company Details"]
+    Image["🖼️ Food Image"] --> VisionServer
+    VisionServer --> |"Ingredients"| Client
+    Client --> |"Ingredients"| SearchServer
+    SearchServer --> |"Recipe Search Results"| Client
+    Client --> |"Ingredients + Search Results"| LLMServer
+    LLMServer --> |"Generated Recipe"| Client
     
     %% Apply styles
     class Client,AgentLoop,MCPClients clientNode
     class VisionServer,VisionModel,VisionTools visionNode
     class LLMServer,LLMModel,LLMTools llmNode
     class SearchServer,SearchEngine,SearchTools searchNode
-    class Image,Result workflowNode
+    class Image workflowNode
+    class Result workflowNode
 ```
 
-## 🧠 Agent Pattern: ReAct with Perception
+## 🍳 Recipe Generation from Food Images
 
-This project implements the **ReAct (Reasoning + Acting) agent pattern with perception capabilities**, which combines:
+This multi-modal agent specializes in generating recipes based on food items detected in images:
 
-1. **Perception**: Using vision models to understand and interpret images
-2. **Reasoning**: Step-by-step thinking process to formulate plans and analyze information
-3. **Acting**: Taking actions through tools to gather information and achieve goals
+1. **Vision Analysis**: The vision server (using Moondream2) identifies food items in the provided image
+2. **Recipe Search**: The search server finds relevant recipes based on the identified ingredients
+3. **Recipe Generation**: The LLM server generates a complete, formatted recipe using both the ingredients and search results
 
-The ReAct pattern follows this loop:
+This demonstrates a practical application of multi-modal AI for everyday use cases, combining computer vision, web search, and natural language generation.
 
-1. **Observe**: Perceive the environment (image analysis)
-2. **Think**: Reason about the observation and determine next steps
-3. **Act**: Use tools to gather more information or take actions
-4. **Repeat**: Continue the cycle until the task is complete
+## 🍳 Recipe Generation Workflow
 
-By adding perception capabilities to the ReAct pattern, our agent can process and reason about visual information, making it truly multi-modal.
+The recipe generation process follows a simple, effective workflow:
 
-## 🧩 Components
+1. **Image Analysis**: The Moondream2 vision model analyzes a food image to identify ingredients
+2. **Ingredient Extraction**: The system extracts a list of identified food items
+3. **Recipe Search**: Using the ingredients list, the system searches for relevant recipes via DuckDuckGo
+4. **Recipe Generation**: The Qwen2.5-3B-Instruct model combines the ingredients and search results to generate a complete recipe
+5. **Formatting**: The recipe is formatted with a title, description, ingredients list, step-by-step instructions, and cooking time
+
+This straightforward workflow demonstrates how multiple AI services can be orchestrated to create a practical application that provides immediate value to users.
+
+## 🤚 Components
 
 ### Vision Server
 
-The Vision Server provides image analysis capabilities through the Model Context Protocol:
-
-- **Model**: Qwen2.5-VL-3B-Instruct (vision-language model)
+- **Purpose**: Analyzes food images to identify ingredients
+- **Model**: Moondream2, a lightweight vision-language model
+- **Tools**: `identify_food_items` - detects and lists food ingredients in images
 - **Optimization**: Intel XPU acceleration with IPEX
-- **Tools**: `analyze_image` for logo identification
-- **Port**: 8000
 
 ### LLM Server
 
-The LLM Server provides language understanding and reasoning capabilities:
-
-- **Model**: Zephyr-7b-beta (instruction-tuned language model)
+- **Purpose**: Generates complete, formatted recipes
+- **Model**: Qwen2.5-3B-Instruct, an efficient instruction-tuned language model
+- **Tools**: `generate_recipe` - creates recipes based on ingredients and search results
 - **Optimization**: Intel XPU acceleration with IPEX
-- **Tools**: `generate_text` and `answer_question`
-- **Prompts**: ReAct agent prompt template
-- **Port**: 8001
 
 ### Search Server
 
-The Search Server provides web search capabilities for gathering information:
-
-- **Engine**: DuckDuckGo search
-- **Tools**: `search_web` and `search_company_info`
-- **Port**: 8002
+- **Purpose**: Finds relevant recipes based on identified ingredients
+- **Engine**: DuckDuckGo search integration
+- **Tools**: `search_recipes` - searches for recipes using the identified ingredients
 
 ### Client Application
 
-The Client Application orchestrates the multi-modal agent workflow:
-
-- Connects to all MCP servers
-- Implements the ReAct agent loop
-- Coordinates tool calls across servers
+- **Purpose**: Orchestrates the workflow between vision, search, and LLM servers
+- **Pattern**: Simple, sequential processing pipeline
+- **Tools**: MCP client for standardized communication between services
+- **Process**: 
+  - Sends images to the vision server for ingredient identification
+  - Forwards ingredients to the search server for recipe search
+  - Combines ingredients and search results for the LLM server
+  - Returns the generated recipe to the user
 - Manages error handling and recovery
 - Provides the final results
 
-## 🚀 Getting Started
+## 💻 Installation
 
 ### Prerequisites
 
-- Python 3.8+
-- Intel GPU with XPU support
-- Intel Extension for PyTorch
-- FastMCP 2.0
+- Python 3.10+
+- Docker and Docker Compose (for containerized deployment)
+- Intel GPU with XPU drivers (for hardware acceleration)
 
-### Installation
-
-1. Clone the repository:
+### Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/multi-modal-agent.git
-cd multi-modal-agent/mcp_agent
+git clone https://github.com/gulguluu/multi_modal_agent.git
+cd multi_modal_agent
 ```
 
-2. Install the required dependencies:
+### Prepare Sample Data
+
+Create a data directory for food images:
 
 ```bash
-pip install -r requirements.txt
+mkdir -p mcp_agent/data
 ```
 
-### Running Locally
+You can add your own food images to this directory, or use the sample image included in the repository.
 
-1. Start the MCP servers:
+### Running with Docker Compose
+
+1. Build and start the services:
 
 ```bash
-python run_servers.py
+cd mcp_agent/docker
+docker-compose build
+docker-compose up -d vision-server llm-server search-server
 ```
 
-2. Run the client application:
+2. Run the client with a food image:
 
 ```bash
-python client/agent_client.py
+docker-compose run client python /app/client/agent_client.py --image /app/data/ingredients.jpg
 ```
 
-### Docker Deployment
-
-For production deployment, use the Docker configuration:
+Or with a URL to a food image:
 
 ```bash
-cd docker
-chmod +x build-and-run.sh
-./build-and-run.sh
+docker-compose run client python /app/client/agent_client.py --url https://images.unsplash.com/photo-1606787366850-de6330128bfc
 ```
 
-See the [Docker README](docker/README.md) for detailed deployment instructions.
+3. The system will:
+   - Identify food items in the image
+   - Search for recipes using those ingredients
+   - Generate a complete recipe with instructions
 
 ## 📊 Performance Optimization
 
-This implementation is optimized for Intel GPUs using Intel Extension for PyTorch (IPEX):
+This project is optimized for Intel GPUs using Intel Extension for PyTorch (IPEX):
 
-- **Mixed Precision**: Models use `torch.float16` for faster inference
-- **IPEX Optimization**: `ipex.optimize()` applied to models
-- **Inference Mode**: `torch.inference_mode()` for maximum efficiency
-- **XPU Detection**: Automatic fallback to CPU if XPU is unavailable
-- **Memory Management**: Efficient resource allocation across services
+- **Model Optimization**: Models are optimized for Intel XPU hardware
+- **Efficient Inference**: Fast ingredient recognition and recipe generation
+- **Memory Management**: Efficient caching of models and results
+- **Docker Volumes**: Persistent model storage to avoid repeated downloads
 
-## 🔄 Workflow Example
+The system is designed to be simple yet effective, providing a practical example of multi-modal AI orchestration on Intel hardware.
+
+## 🔁 Recipe Generation Example
 
 1. **Image Analysis**:
    ```
-   Input: logo1.png
-   Output: "Apple Inc."
+   Input: ingredients.jpg (image of tomatoes, onions, chicken, garlic)
+   Output: ["tomatoes", "onions", "chicken", "garlic"]
    ```
 
-2. **Query Generation**:
+2. **Recipe Search**:
    ```
-   "Identify the company shown in the image as 'Apple Inc.' and give me its details like name, headquarters, website, and what it does."
-   ```
-
-3. **Agent Reasoning and Search**:
-   ```
-   Thought: I need to search for information about Apple Inc.
-   Action: search_company_info
-   Action Input: "Apple Inc."
-   Observation: [Search results about Apple]
+   Input: "tomatoes, onions, chicken, garlic"
+   Output: [Search results for recipes with these ingredients]
    ```
 
-4. **Final Answer**:
+3. **Recipe Generation**:
    ```
-   Company: Apple Inc.
-   Headquarters: Cupertino, California, USA
-   Website: apple.com
-   Business: Consumer electronics, software, and online services
+   Input: Ingredients + Search Results
+   Output: 
+   
+   # Garlic Tomato Chicken
+   
+   A delicious one-pan meal using fresh ingredients.
+   
+   ## Ingredients:
+   * 2 chicken breasts, diced
+   * 3 tomatoes, chopped
+   * 1 onion, sliced
+   * 4 cloves garlic, minced
+   * 2 tbsp olive oil
+   * 1 tsp dried oregano
+   * Salt and pepper to taste
+   
+   ## Instructions:
+   1. Heat olive oil in a large skillet over medium heat
+   2. Add onions and cook until translucent (3-4 minutes)
+   3. Add garlic and cook for 30 seconds until fragrant
+   4. Add chicken and cook until no longer pink (5-7 minutes)
+   5. Add tomatoes, oregano, salt, and pepper
+   6. Simmer for 10-15 minutes until sauce thickens
+   7. Serve hot with rice or pasta
+   
+   Cooking time: 25 minutes | Serves: 4
    ```
 
-## 🛠️ Extending the Agent
+## 🤖️ Extending the Recipe Generator
 
-### Adding New Tools
+### Adding More Food Recognition Capabilities
 
-To add a new tool to an MCP server:
+To enhance the vision server with more food recognition capabilities:
 
 ```python
 @server.tool()
-def new_tool(param1: str, param2: int) -> dict:
-    """Tool description"""
-    # Tool implementation
-    return {"result": "value"}
+def identify_nutrition_facts(image_path: str) -> str:
+    """Identify nutritional information from food packaging images"""
+    # Implementation using vision model
+    return json.dumps({"calories": 250, "protein": "15g", ...})
 ```
 
-### Adding New Servers
+### Supporting More Recipe Types
 
-To add a new MCP server:
+To add support for specific dietary preferences:
 
-1. Create a new server file based on the existing templates
-2. Add the server to `run_servers.py`
-3. Update the client to connect to the new server
+```python
+@server.tool()
+def generate_vegetarian_recipe(ingredients: str, search_results: str = "") -> str:
+    """Generate vegetarian recipes from ingredients"""
+    # Implementation using LLM
+    return "Vegetarian recipe content..."
+```
+
+### Enhancing the Client
+
+To improve the client application:
+
+1. Add support for dietary restrictions as command-line arguments
+2. Implement a simple web interface for uploading images
+3. Add the ability to save favorite recipes
+4. Include options for serving size adjustment
 
 ## 📚 References
 
-- [Model Context Protocol (MCP)](https://modelcontextprotocol.info/)
-- [FastMCP 2.0 Documentation](https://gofastmcp.com/getting-started/welcome)
-- [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629)
+- [Model Context Protocol (MCP)](https://github.com/microsoft/mcp)
+- [Fast MCP](https://github.com/microsoft/FastMCP)
 - [Intel Extension for PyTorch](https://github.com/intel/intel-extension-for-pytorch)
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+- [Moondream2](https://huggingface.co/vikhyatk/moondream2)
+- [Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct)
+- [Intel AI Tools](https://www.intel.com/content/www/us/en/developer/tools/oneapi/ai-analytics-toolkit.html)
 
 ## 🙏 Acknowledgments
 
-- The FastMCP team for the Model Context Protocol implementation
-- Intel for the PyTorch extension and XPU support
-- The open-source AI community for models and tools
+- Thanks to the developers of the Model Context Protocol and FastMCP
+- Thanks to the Intel team for their PyTorch extensions and XPU optimizations
+- Thanks to the HuggingFace team for hosting the Moondream2 and Qwen2.5 models
+- Thanks to the DuckDuckGo team for their search API
+
+## 📁 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
