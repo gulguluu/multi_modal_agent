@@ -26,14 +26,5 @@ models/
 # Logs
 *.log
 
-# Old files
-main copy.py
-
-# Data files
-data/
-*.png
-*.jpg
-*.jpeg
-
 # Environment variables
 .env
