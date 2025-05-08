@@ -6,17 +6,18 @@ Provides web search capabilities through the Model Context Protocol
 
 import json
 import logging
-from typing import List
+from typing import List, Dict, Any
 
+from duckduckgo_search import DDGS
 from fastmcp import FastMCP
-from langchain_community.tools import DuckDuckGoSearchRun
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 server = FastMCP("SearchServer", host="0.0.0.0", port=8002)
-search_tool = DuckDuckGoSearchRun()
+# Initialize DuckDuckGo search client
+ddgs = DDGS()
 
 
 @server.tool()
@@ -32,8 +33,17 @@ def search_web(query: str) -> str:
     """
     logger.info(f"Searching web for: {query}")
     try:
-        result = search_tool.run(query)
-        return result
+        # Get search results using the DDGS client directly
+        results = ddgs.text(query, max_results=10)
+        
+        # Format the results as a single text string
+        if results:
+            formatted_results = "\n\n".join(
+                [f"{result['title']}\n{result['href']}\n{result['body']}" for result in results]
+            )
+            return formatted_results
+        else:
+            return "No search results found."
     except Exception as e:
         logger.error(f"Error searching web: {str(e)}")
         return "No search results found."
