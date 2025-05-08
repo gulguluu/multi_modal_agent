@@ -164,9 +164,13 @@ class MultiModalAgent:
             # Get the text content from the MCP response
             food_items_text = self._extract_text_from_response(result)
             
-            # Parse the JSON array
+            # Parse the JSON array - handle incomplete JSON
             try:
                 import json
+                # Fix incomplete JSON by adding closing bracket if needed
+                if not food_items_text.strip().endswith(']'):
+                    food_items_text = food_items_text.strip() + '"]'
+                
                 food_items_list = json.loads(food_items_text)
                 
                 # Make the list unique and sorted
@@ -178,6 +182,7 @@ class MultiModalAgent:
                 else:
                     print(f"Detected items (not a list): {food_items_text}")
             except json.JSONDecodeError:
+                # For invalid JSON, just use the text as is
                 print(f"Detected items (not valid JSON): {food_items_text}")
                 
             return food_items_text
@@ -233,7 +238,18 @@ class MultiModalAgent:
         
         # Add search results if we have them
         if search_result_text and len(search_result_text) > 100:
-            llm_params["search_results"] = search_result_text[:1000]
+            # Ensure search_results is a string
+            if isinstance(search_result_text, dict) or (hasattr(search_result_text, '__dict__')):
+                import json
+                try:
+                    if hasattr(search_result_text, 'to_dict'):
+                        search_result_text = json.dumps(search_result_text.to_dict())
+                    else:
+                        search_result_text = json.dumps(search_result_text)
+                except:
+                    search_result_text = str(search_result_text)
+            
+            llm_params["search_results"] = str(search_result_text)[:1000]
         else:
             # No useful search results, inform the LLM
             llm_params["search_results"] = "No specific recipes found for these ingredients. Please create a recipe based only on the ingredients."
