@@ -30,13 +30,13 @@ def search_web(query: str) -> str:
     Returns:
         Search results as text
     """
+    logger.info(f"Searching web for: {query}")
     try:
-        logger.info(f"Searching web for: {query}")
         result = search_tool.run(query)
         return result
     except Exception as e:
         logger.error(f"Error searching web: {str(e)}")
-        return f"Error searching web: {str(e)}"
+        return "No search results found."
 
 
 @server.tool()
@@ -50,67 +50,47 @@ def search_recipes(ingredients: str) -> str:
     Returns:
         JSON string with recipe information
     """
+    logger.info(f"Searching for recipes with ingredients: {ingredients}")
+    
+    # Process ingredients - handle both JSON and text formats
     try:
-        # Simple ingredient processing - trust the vision model output
-        if isinstance(ingredients, str):
-            # If it looks like a JSON array, try to parse it
-            if ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
-                try:
-                    ingredients_list = json.loads(ingredients)
-                    if isinstance(ingredients_list, list):
-                        ingredients = ", ".join(ingredients_list)
-                except json.JSONDecodeError:
-                    # Not valid JSON, just use as text
-                    logger.info(f"Using raw text from vision model: {ingredients}")
-                    # Simple cleanup - remove brackets if they exist
-                    ingredients = ingredients.strip('[]').replace('"', '').replace('\'', '')
-            
-        # Limit length for very long inputs
-        if len(ingredients) > 200:
-            ingredients = ingredients[:200]
-        
-        # If no ingredients, just return empty result
-        if not ingredients or ingredients.lower() in ["[]", "none", "unknown", "no ingredients"]:
-            logger.warning(f"No ingredients found in: {ingredients}")
-            return json.dumps({
-                "ingredients": [],
-                "recipes": [],
-                "error": "No ingredients were identified. Please try with a clearer image of food items."
-            }, indent=2)
-            
-        # Construct a search query for recipes
-        query = f"recipes with {ingredients} easy homemade"
-        
-        logger.info(f"Searching for recipes with ingredients: {ingredients}")
-        # Use the search_web function to avoid duplicating search logic
-        search_results = search_web(query)
-        
-        # Process search results
-        recipes = []
-        if search_results and len(search_results) > 100:
-            # Extract recipe names
-            lines = search_results.split('\n')
-            for line in lines:
-                if 'recipe' in line.lower() or any(food in line.lower() for food in ['dish', 'meal', 'cook', 'bake']):
-                    recipes.append(line.strip())
-            
-            # Limit to top 5 recipes
-            recipes = recipes[:5] if len(recipes) > 5 else recipes
-        
-        result = {
-            "ingredients": ingredients,
-            "search_query": query,
-            "recipes": recipes,
-            "full_results": search_results[:1000] if len(search_results) > 1000 else search_results
-        }
-        return json.dumps(result, indent=2)
-    except Exception as e:
-        logger.error(f"Error searching for recipes: {str(e)}")
+        # If it looks like a JSON array, convert to comma-separated string
+        if ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
+            ingredients_list = json.loads(ingredients)
+            if isinstance(ingredients_list, list):
+                ingredients = ", ".join(ingredients_list)
+    except:
+        # Not valid JSON, clean up the string
+        ingredients = ingredients.strip('[]').replace('"', '').replace('\'', '')
+    
+    # Limit length and check for empty ingredients
+    ingredients = ingredients[:200] if len(ingredients) > 200 else ingredients
+    if not ingredients or ingredients.lower() in ["[]", "none", "unknown", "no ingredients"]:
         return json.dumps({
-            "ingredients": ingredients if isinstance(ingredients, str) else str(ingredients),
+            "ingredients": [],
             "recipes": [],
-            "error": f"Error searching for recipes: {str(e)}"
-        }, indent=2)
+            "error": "No ingredients were identified."
+        })
+    
+    # Search for recipes
+    query = f"recipes with {ingredients} easy homemade"
+    search_results = search_web(query)
+    
+    # Extract recipe names from search results
+    recipes = []
+    if search_results and len(search_results) > 100:
+        for line in search_results.split('\n'):
+            if 'recipe' in line.lower() or any(food in line.lower() for food in ['dish', 'meal', 'cook', 'bake']):
+                recipes.append(line.strip())
+        recipes = recipes[:5] if len(recipes) > 5 else recipes
+    
+    # Return formatted results
+    result = {
+        "ingredients": ingredients,
+        "recipes": recipes,
+        "full_results": search_results[:1000] if search_results else ""
+    }
+    return json.dumps(result)
 
 
 def get_search_capabilities() -> List[str]:

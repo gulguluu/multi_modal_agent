@@ -5,6 +5,8 @@ WORKDIR /app
 COPY ../requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN pip install --no-cache-dir einops diffusers accelerate "pyvips[binary]"
+
 # Create cache directory with proper permissions
 RUN mkdir -p /app/.cache/huggingface && \
     chmod -R 777 /app/.cache

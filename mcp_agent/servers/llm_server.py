@@ -67,7 +67,7 @@ class LLMProcessor:
                 "text-generation",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                max_new_tokens=256,
+                max_new_tokens=512,
                 temperature=0.2,
                 top_p=0.95,
                 do_sample=True,
@@ -135,57 +135,46 @@ def generate_recipe(ingredients: str, search_results: str = "", max_tokens: int 
     Returns:
         Formatted recipe with name, ingredients, instructions, and cooking time
     """
+    logger.info(f"Generating recipe for ingredients: {ingredients}")
+    
+    # Clean up ingredients if it's a JSON array
+    if ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
+        try:
+            import json
+            ingredients_list = json.loads(ingredients)
+            if isinstance(ingredients_list, list):
+                ingredients = ", ".join(ingredients_list)
+        except:
+            # Not valid JSON, use as is
+            pass
+    
+    # Build the prompt based on available information
+    prompt_parts = [f"Based on these ingredients: {ingredients}"]
+    
+    # Add search results if available
+    if search_results and len(search_results) > 10:
+        prompt_parts.append(f"And these recipe search results:\n{search_results[:1000]}")
+    
+    # Add formatting instructions
+    prompt_parts.append("""
+    Create a delicious recipe that primarily uses these ingredients. Format your response as follows:
+    1. Recipe name (bold)
+    2. Brief description
+    3. Ingredients list (bullet points)
+    4. Simple step-by-step instructions (numbered)
+    5. Cooking time and servings
+    
+    Only suggest recipes that primarily use the ingredients listed. Be concise and practical.
+    """)
+    
+    # Join all parts with newlines
+    prompt = "\n".join(prompt_parts)
+    
     try:
-        logger.info(f"Generating recipe for ingredients: {ingredients}")
-        
-        # Clean up ingredients input if it's a JSON string
-        if isinstance(ingredients, str) and ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
-            try:
-                import json
-                ingredients_list = json.loads(ingredients)
-                if isinstance(ingredients_list, list):
-                    ingredients = ", ".join(ingredients_list)
-            except json.JSONDecodeError:
-                # Not valid JSON, use as is
-                pass
-        
-        # Construct a recipe generation prompt
-        if search_results and len(search_results) > 10:
-            prompt = f"""
-            Based on these ingredients: {ingredients}
-            And these recipe search results: 
-            {search_results[:2000]}
-            
-            Create a delicious recipe that primarily uses these ingredients. Format your response as follows:
-            1. Recipe name (bold)
-            2. Brief description
-            3. Ingredients list (bullet points)
-            4. Simple step-by-step instructions (numbered)
-            5. Cooking time and servings
-            
-            Only suggest recipes that primarily use the ingredients listed. Be concise and practical.
-            """
-        else:
-            prompt = f"""
-            Based on these ingredients: {ingredients}
-            
-            Create a delicious recipe that primarily uses these ingredients. Format your response as follows:
-            1. Recipe name (bold)
-            2. Brief description
-            3. Ingredients list (bullet points)
-            4. Simple step-by-step instructions (numbered)
-            5. Cooking time and servings
-            
-            Only suggest recipes that primarily use the ingredients listed. Be concise and practical.
-            """
-        
         return llm_processor.generate(prompt, max_tokens)
     except Exception as e:
-        logger.error(f"Error in generate_recipe: {str(e)}")
-        return f"Error generating recipe: {str(e)}"
-
-
-# Removed answer_question function as it's not needed for recipe generation
+        logger.error(f"Error generating recipe: {str(e)}")
+        return f"Could not generate a recipe with the provided ingredients. Please try again with different ingredients."
 
 
 def get_model_info() -> Dict[str, Any]:
@@ -196,9 +185,6 @@ def get_model_info() -> Dict[str, Any]:
         "max_tokens": 512,
         "temperature": 0.2,
     }
-
-
-# Removed react_agent_prompt function as it's not needed for recipe generation
 
 
 if __name__ == "__main__":
