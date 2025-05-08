@@ -6,7 +6,7 @@ Optimized for Intel GPUs using Intel Extension for PyTorch
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import intel_extension_for_pytorch as ipex
 import torch
@@ -123,30 +123,38 @@ def generate_text(prompt: str, max_tokens: int = 256) -> str:
 
 
 @server.tool()
-def generate_recipe(ingredients: str, search_results: str = "", max_tokens: int = 512) -> str:
+def generate_recipe(ingredients: Any, search_results: str = "", max_tokens: int = 512) -> str:
     """
     Generate a recipe based on provided ingredients and optional search results.
 
     Args:
-        ingredients: List of ingredients available for the recipe
+        ingredients: List of ingredients available for the recipe (can be string or list)
         search_results: Optional search results about recipes with these ingredients
         max_tokens: Maximum number of tokens to generate
 
     Returns:
         Formatted recipe with name, ingredients, instructions, and cooking time
     """
-    logger.info(f"Generating recipe for ingredients: {ingredients}")
+    logger.info(f"Generating recipe for ingredients type: {type(ingredients)}")
     
-    # Clean up ingredients if it's a JSON array
-    if ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
-        try:
-            import json
-            ingredients_list = json.loads(ingredients)
-            if isinstance(ingredients_list, list):
-                ingredients = ", ".join(ingredients_list)
-        except:
-            # Not valid JSON, use as is
-            pass
+    # Handle different input types for ingredients
+    if isinstance(ingredients, list):
+        # If it's already a list, join it into a comma-separated string
+        ingredients = ", ".join(ingredients)
+    elif isinstance(ingredients, str):
+        # If it's a string that looks like a JSON array, try to parse it
+        if ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
+            try:
+                import json
+                ingredients_list = json.loads(ingredients)
+                if isinstance(ingredients_list, list):
+                    ingredients = ", ".join(ingredients_list)
+            except:
+                # Not valid JSON, use as is
+                pass
+    else:
+        # For any other type, convert to string
+        ingredients = str(ingredients)
     
     # Build the prompt based on available information
     prompt_parts = [f"Based on these ingredients: {ingredients}"]
