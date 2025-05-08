@@ -51,44 +51,53 @@ def search_recipes(ingredients: str) -> str:
         JSON string with recipe information
     """
     logger.info(f"Searching for recipes with ingredients: {ingredients}")
-    
+
     # Process ingredients - handle both JSON and text formats
     try:
         # If it looks like a JSON array, convert to comma-separated string
-        if ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
+        if ingredients.strip().startswith("[") and ingredients.strip().endswith("]"):
             ingredients_list = json.loads(ingredients)
             if isinstance(ingredients_list, list):
                 ingredients = ", ".join(ingredients_list)
     except:
         # Not valid JSON, clean up the string
-        ingredients = ingredients.strip('[]').replace('"', '').replace('\'', '')
-    
+        ingredients = ingredients.strip("[]").replace('"', "").replace("'", "")
+
     # Limit length and check for empty ingredients
     ingredients = ingredients[:200] if len(ingredients) > 200 else ingredients
-    if not ingredients or ingredients.lower() in ["[]", "none", "unknown", "no ingredients"]:
-        return json.dumps({
-            "ingredients": [],
-            "recipes": [],
-            "error": "No ingredients were identified."
-        })
-    
+    if not ingredients or ingredients.lower() in [
+        "[]",
+        "none",
+        "unknown",
+        "no ingredients",
+    ]:
+        return json.dumps(
+            {
+                "ingredients": [],
+                "recipes": [],
+                "error": "No ingredients were identified.",
+            }
+        )
+
     # Search for recipes
     query = f"recipes with {ingredients} easy homemade"
     search_results = search_web(query)
-    
+
     # Extract recipe names from search results
     recipes = []
     if search_results and len(search_results) > 100:
-        for line in search_results.split('\n'):
-            if 'recipe' in line.lower() or any(food in line.lower() for food in ['dish', 'meal', 'cook', 'bake']):
+        for line in search_results.split("\n"):
+            if "recipe" in line.lower() or any(
+                food in line.lower() for food in ["dish", "meal", "cook", "bake"]
+            ):
                 recipes.append(line.strip())
         recipes = recipes[:5] if len(recipes) > 5 else recipes
-    
+
     # Return formatted results
     result = {
         "ingredients": ingredients,
         "recipes": recipes,
-        "full_results": search_results[:1000] if search_results else ""
+        "full_results": search_results[:1000] if search_results else "",
     }
     return json.dumps(result)
 

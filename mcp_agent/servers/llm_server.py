@@ -6,7 +6,7 @@ Optimized for Intel GPUs using Intel Extension for PyTorch
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 import intel_extension_for_pytorch as ipex
 import torch
@@ -38,22 +38,19 @@ class LLMProcessor:
         try:
             logger.info(f"Loading language model: {model_id}")
             self.model_id = model_id
-            
-            # Ensure model is downloaded properly with progress bar
+
             logger.info("Downloading and preparing tokenizer...")
             self.tokenizer = AutoTokenizer.from_pretrained(
-                model_id, 
+                model_id,
                 use_fast=True,
                 trust_remote_code=True,
-                #cache_dir="/app/.cache/huggingface",
             )
-            
+
             logger.info("Tokenizer loaded, now loading model...")
             self.model = AutoModelForCausalLM.from_pretrained(
-                model_id, 
+                model_id,
                 torch_dtype=torch.float16,
                 trust_remote_code=True,
-                #cache_dir="/app/.cache/huggingface",
             )
 
             self.device = device or ("xpu" if torch.xpu.is_available() else "cpu")
@@ -104,7 +101,7 @@ llm_processor = LLMProcessor()
 
 
 @server.tool()
-def generate_text(prompt: str, max_tokens: int = 256) -> str:
+def generate_text(prompt: str, max_tokens: int = 512) -> str:
     """
     Generate text using the local LLM.
 
@@ -123,7 +120,9 @@ def generate_text(prompt: str, max_tokens: int = 256) -> str:
 
 
 @server.tool()
-def generate_recipe(ingredients: Any, search_results: str = "", max_tokens: int = 512) -> str:
+def generate_recipe(
+    ingredients: Any, search_results: str = "", max_tokens: int = 512
+) -> str:
     """
     Generate a recipe based on provided ingredients and optional search results.
 
@@ -136,35 +135,25 @@ def generate_recipe(ingredients: Any, search_results: str = "", max_tokens: int 
         Formatted recipe with name, ingredients, instructions, and cooking time
     """
     logger.info(f"Generating recipe for ingredients type: {type(ingredients)}")
-    
-    # Handle different input types for ingredients
     if isinstance(ingredients, list):
-        # If it's already a list, join it into a comma-separated string
         ingredients = ", ".join(ingredients)
     elif isinstance(ingredients, str):
-        # If it's a string that looks like a JSON array, try to parse it
-        if ingredients.strip().startswith('[') and ingredients.strip().endswith(']'):
+        if ingredients.strip().startswith("[") and ingredients.strip().endswith("]"):
             try:
                 import json
+
                 ingredients_list = json.loads(ingredients)
                 if isinstance(ingredients_list, list):
                     ingredients = ", ".join(ingredients_list)
             except:
-                # Not valid JSON, use as is
                 pass
     else:
-        # For any other type, convert to string
         ingredients = str(ingredients)
-    
-    # Build the prompt based on available information
     prompt_parts = [f"Based on these ingredients: {ingredients}"]
-    
-    # Add search results if available
     if search_results and len(search_results) > 10:
-        prompt_parts.append(f"And these recipe search results:\n{search_results[:1000]}")
-    
-    # Add formatting instructions
-    prompt_parts.append("""
+        prompt_parts.append(f"And these recipe search results:\n{search_results[:500]}")
+    prompt_parts.append(
+        """
     Create a delicious recipe that primarily uses these ingredients. Format your response as follows:
     1. Recipe name (bold)
     2. Brief description
@@ -173,11 +162,9 @@ def generate_recipe(ingredients: Any, search_results: str = "", max_tokens: int 
     5. Cooking time and servings
     
     Only suggest recipes that primarily use the ingredients listed. Be concise and practical.
-    """)
-    
-    # Join all parts with newlines
+    """
+    )
     prompt = "\n".join(prompt_parts)
-    
     try:
         return llm_processor.generate(prompt, max_tokens)
     except Exception as e:
