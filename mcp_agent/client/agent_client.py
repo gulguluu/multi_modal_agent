@@ -152,32 +152,33 @@ class MultiModalAgent:
             logger.error(f"Image not found: {image_path}")
             return "[]"
         
+        # Read the image file as bytes
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+        
+        # Convert bytes to base64
+        import base64
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        
         # Call the vision server MCP tool to identify food items
         result = await self._call_mcp_tool(
-            VISION_SERVER_URL,
-            "identify_food_items",
-            {"image_path": image_path}
+            VISION_SERVER_URL, 
+            "detect_food_items", 
+            {"image": image_b64}
         )
         
-        # Extract the food items from the response
-        if result:
-            # Get the text content from the MCP response
-            food_items_text = self._extract_text_from_response(result)
-            
-            # Parse the JSON array - handle incomplete JSON
+        # Extract food items from the response
+        food_items_text = self._extract_text_from_response(result)
+        
+        # Try to parse as JSON and make items unique and sorted
+        if food_items_text:
             try:
                 import json
-                # Fix incomplete JSON by adding closing bracket if needed
-                if not food_items_text.strip().endswith(']'):
-                    food_items_text = food_items_text.strip() + '"]'
-                
-                food_items_list = json.loads(food_items_text)
-                
-                # Make the list unique and sorted
-                if isinstance(food_items_list, list):
-                    # Remove duplicates and sort alphabetically
-                    unique_items = sorted(list(set(food_items_list)))
-                    food_items_text = json.dumps(unique_items)
+                food_items = json.loads(food_items_text)
+                if isinstance(food_items, list):
+                    # Make items unique and sort them
+                    food_items = sorted(list(set(food_items)))
+                    food_items_text = json.dumps(food_items)
                     print(f"✅ Detected food items: {food_items_text}")
                 else:
                     print(f"Detected items (not a list): {food_items_text}")
@@ -196,6 +197,20 @@ class MultiModalAgent:
         # Quick check for empty food items
         if food_items == "[]" or not food_items.strip():
             return "No recipe suggestions available as no food items could be identified."
+        
+        # Parse the food items to ensure we're using deduplicated list
+        import json
+        try:
+            # Parse the JSON string to get the list of food items
+            food_items_list = json.loads(food_items)
+            if isinstance(food_items_list, list):
+                # Ensure the list is deduplicated and sorted
+                food_items_list = sorted(list(set(food_items_list)))
+                # Convert back to JSON string
+                food_items = json.dumps(food_items_list)
+        except json.JSONDecodeError:
+            # If it's not valid JSON, use as is
+            pass
         
         # Step 1: Search for recipes with the identified ingredients
         print("\n==== SEARCHING FOR RECIPES ====\n")
