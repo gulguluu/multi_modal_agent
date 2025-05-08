@@ -287,7 +287,7 @@ def create_agent():
         prompt = create_custom_prompt()
         chain = prompt | llm
 
-        return initialize_agent(
+        agent = initialize_agent(
             tools=tools,
             llm=llm,
             agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
@@ -295,7 +295,9 @@ def create_agent():
             handle_parsing_errors=True,
             verbose=False,
             max_iterations=5,
+            early_stopping_method="generate",
         )
+        return agent
     except Exception as e:
         logger.error(f"Error creating agent: {str(e)}")
         raise
@@ -370,6 +372,13 @@ if __name__ == "__main__":
         output = response["output"]
         if "Final Answer:" in output:
             output = output.split("Final Answer:")[1].strip()
+        for marker in ["\nThought:", "\nHuman:", "\nQuestion:", "Thought:", "Human:", "I need to"]:
+            if marker in output:
+                output = output.split(marker)[0].strip()
+        output = re.sub(r'\nAction:\s*\{.*?\}', '', output, flags=re.DOTALL)
+        output = re.sub(r'\nObservation:.*?\n', '\n', output, flags=re.DOTALL)
+        output = output.replace("the final answer to the original input question", "").strip()
+        output = output.replace("Begin! Reminder to always use the exact characters `Final Answer` when responding.", "").strip()
         print(output)
         if not args.quiet:
             print("\n" + "=" * 60)
