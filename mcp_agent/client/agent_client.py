@@ -257,18 +257,21 @@ class MultiModalAgent:
         }
         
         # Add search results if we have them
-        if search_result_text and len(search_result_text) > 100:
+        if search_result_text and len(str(search_result_text)) > 100:
             # Ensure search_results is a string
-            if isinstance(search_result_text, dict) or (hasattr(search_result_text, '__dict__')):
+            if not isinstance(search_result_text, str):
                 import json
                 try:
                     if hasattr(search_result_text, 'to_dict'):
                         search_result_text = json.dumps(search_result_text.to_dict())
-                    else:
+                    elif isinstance(search_result_text, dict):
                         search_result_text = json.dumps(search_result_text)
+                    else:
+                        search_result_text = str(search_result_text)
                 except:
                     search_result_text = str(search_result_text)
             
+            # Always ensure we're passing a string, not a dict
             llm_params["search_results"] = str(search_result_text)[:1000]
         else:
             # No useful search results, inform the LLM
