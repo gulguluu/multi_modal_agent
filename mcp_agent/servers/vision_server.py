@@ -115,9 +115,6 @@ class ImageAnalyzer:
                     try:
                         # Validate it's proper JSON
                         food_items = json.loads(array_match.group(0))
-                        # Deduplicate food items if it's a list
-                        if isinstance(food_items, list):
-                            food_items = sorted(list(set(food_items)))
                         response = json.dumps(food_items)
                     except:
                         response = "[]"
