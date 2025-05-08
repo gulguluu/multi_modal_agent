@@ -235,9 +235,17 @@ class MultiModalAgent:
         print("\n==== GENERATING RECIPE SUGGESTION ====\n")
         
         # Prepare parameters for the LLM
-        # Simply stringify the ingredients parameter
+        # Convert ingredients to the format expected by the LLM server
+        # The LLM server expects a JSON string that it will parse
+        if isinstance(food_items, list):
+            import json
+            ingredients_str = json.dumps(food_items)
+        else:
+            # It's already a string, make sure it's properly formatted
+            ingredients_str = str(food_items)
+            
         llm_params = {
-            "ingredients": str(food_items),
+            "ingredients": ingredients_str,
             "max_tokens": 1000
         }
         
