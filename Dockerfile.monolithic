@@ -2,19 +2,31 @@ FROM intel/intel-extension-for-pytorch:2.7.10-serving-xpu
 
 WORKDIR /app
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create cache directory with proper permissions
 RUN mkdir -p /app/.cache/huggingface && \
     chmod -R 777 /app/.cache
+RUN pip install --no-cache-dir einops diffusers accelerate "pyvips[binary]"
+RUN python -c "from transformers import AutoModelForCausalLM; AutoModelForCausalLM.from_pretrained('vikhyatk/moondream2', trust_remote_code=True)"
 
 COPY main.py /app/
 RUN mkdir -p /app/data
 
+# Set environment variables for Intel XPU optimization
 ENV IPEX_OPTIMIZE=1
 ENV IPEX_MERGE_FUSION=1
 ENV IPEX_AUTO_TUNE=1
 ENV IPEX_VERBOSE=1
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+ENV HF_HOME=/app/.cache/huggingface
+ENV HF_HUB_CACHE=/app/.cache/huggingface
 
 ENTRYPOINT ["python", "/app/main.py"]

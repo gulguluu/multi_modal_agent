@@ -19,6 +19,7 @@ This repository contains two implementations of the same functionality:
 The monolithic implementation (`main.py`) provides a simple, all-in-one solution for logo recognition and company information retrieval:
 
 - Single Python file with all components
+- Uses Moondream2 for efficient logo detection
 - Easier to understand for beginners
 - Runs all models in the same process
 - Optimized for Intel GPUs using Intel Extension for PyTorch
@@ -29,15 +30,35 @@ The monolithic implementation (`main.py`) provides a simple, all-in-one solution
 
 ```bash
 pip install -r requirements.txt
-python main.py
+
+# Run with a local image file
+python main.py --image path/to/logo.png
+
+# Run with an image URL
+python main.py --url https://example.com/logo.png
 ```
 
 #### Docker Execution
 
 ```bash
-docker build -t multi-modal-agent:monolithic .
-docker run --privileged -v $(pwd)/data:/app/data multi-modal-agent:monolithic
+# Build the Docker image
+docker build -f Dockerfile.monolithic -t multi-modal-agent:monolithic .
+
+# Run with a local image file (must be in the data directory)
+docker run --privileged -v $(pwd)/data:/app/data multi-modal-agent:monolithic --image /app/data/logo.png
+
+# Run with an image URL
+docker run --privileged multi-modal-agent:monolithic --url https://example.com/logo.png
 ```
+
+### About the Moondream2 Model
+
+The monolithic implementation uses the Moondream2 vision-language model, which offers several advantages for logo detection:
+
+- Smaller model size (1.5B parameters) compared to alternatives
+- Efficient inference on Intel GPUs
+- Good performance on visual recognition tasks
+- Optimized with Intel Extension for PyTorch (IPEX)
 
 ## MCP-Based Implementation
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # Multi-Modal Agent for Logo Recognition and Company Information Retrieval
-# Optimized for Intel GPUs
+# Optimized for Intel GPUs using Moondream2 model
 
 import argparse
 import logging
 import os
 import tempfile
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 import intel_extension_for_pytorch as ipex
 import requests
@@ -17,8 +17,7 @@ from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_core.prompts import PromptTemplate
 from langchain_huggingface import HuggingFacePipeline
 from PIL import Image
-from transformers import (AutoModelForCausalLM, AutoModelForImageTextToText,
-                          AutoProcessor, AutoTokenizer, pipeline)
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -27,27 +26,42 @@ logger = logging.getLogger(__name__)
 
 
 class ImageAnalyzer:
-    """Analyzes images to identify logos and content using a vision-language model."""
+    """Analyzes images to identify logos and content using the Moondream2 vision-language model."""
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen2.5-VL-3B-Instruct",
+        model_name: str = "vikhyatk/moondream2",
         device: Optional[str] = None,
     ):
-        """Initialize the image analyzer with the specified model.
+        """Initialize the image analyzer with the Moondream2 model.
 
         Args:
             model_name: HuggingFace model identifier
             device: Computing device (xpu, cuda, cpu). If None, uses xpu if available, else cpu.
         """
         try:
-            self.processor = AutoProcessor.from_pretrained(model_name)
-            self.model = AutoModelForImageTextToText.from_pretrained(
-                model_name, torch_dtype=torch.float16
-            )
             self.device = device or ("xpu" if torch.xpu.is_available() else "cpu")
-            logger.info(f"Using device: {self.device} for image analysis")
-            self.model.to(self.device)
+            self.dtype = torch.float16 if self.device != "cpu" else torch.bfloat16
+            logger.info(
+                f"Using device: {self.device} for image analysis with {model_name}"
+            )
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                trust_remote_code=True,
+                torch_dtype=self.dtype,
+            ).to(self.device)
+            self.model.eval()
+            if self.device == "xpu":
+                logger.info("Applying IPEX optimizations to vision model")
+                try:
+                    self.model = ipex.optimize(
+                        self.model, dtype=torch.float16, inplace=True
+                    )
+                    logger.info("IPEX optimization applied successfully.")
+                except Exception as e:
+                    logger.error(f"IPEX optimization failed: {e}", exc_info=True)
+                    logger.warning("Proceeding without IPEX optimization due to error.")
+
         except Exception as e:
             logger.error(f"Error initializing ImageAnalyzer: {str(e)}")
             raise
@@ -57,7 +71,7 @@ class ImageAnalyzer:
         image_path: str,
         prompt: str = "Identify the company logo shown in this image. Respond with ONLY the company name.",
     ) -> str:
-        """Analyze an image to identify its content.
+        """Analyze an image to identify its content using Moondream2 model.
 
         Args:
             image_path: Path to the image file
@@ -68,44 +82,20 @@ class ImageAnalyzer:
         """
         try:
             if not os.path.exists(image_path):
-                raise FileNotFoundError(f"Image not found: {image_path}")
-
-            image = Image.open(image_path).convert("RGB")
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are a logo identification expert specializing in modern technology companies. "
-                    "Identify company logos accurately and respond with ONLY the company name. "
-                    "For example, if shown a logo, respond with just the company name like 'Apple' or 'Microsoft'. "
-                    "Be specific and concise. Provide only the company name without any explanations. "
-                    "Never respond with 'None' or 'I don't know'. If you're uncertain, make your best guess.",
-                },
-                {
-                    "role": "user",
-                    "content": [{"type": "image"}, {"type": "text", "text": prompt}],
-                },
-            ]
-            text = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            inputs = self.processor(
-                text=[text], images=[image], return_tensors="pt"
-            ).to(self.device)
-
+                logger.error(f"Image not found: {image_path}")
+                return "Error: Image not found"
+            try:
+                image = Image.open(image_path).convert("RGB")
+            except Exception as e:
+                logger.error(f"Error loading image: {e}")
+                return f"Error loading image: {str(e)}"
             with torch.inference_mode():
-                outputs = self.model.generate(**inputs, max_length=500)
-
-            result = self.processor.tokenizer.decode(
-                outputs[0], skip_special_tokens=True
-            )
-
-            # Clean up the result
-            result = result.strip()
+                answer_dict = self.model.query(image=image, question=prompt)
+                response = answer_dict["answer"]
+            logger.info(f"Raw analysis result: {response}")
+            result = response.strip()
             if "\n" in result:
-                # Take the first line if there are multiple lines
                 result = result.split("\n")[0].strip()
-
-            # Remove common prefixes that the model might add
             prefixes_to_remove = [
                 "The logo is ",
                 "This is the logo of ",
@@ -119,21 +109,18 @@ class ImageAnalyzer:
             for prefix in prefixes_to_remove:
                 if result.lower().startswith(prefix.lower()):
                     result = result[len(prefix) :].strip()
-
-            # Handle common failure cases
             if (
                 result.lower() == "none"
                 or not result
                 or result.lower() == "i don't know"
                 or result.lower() == "unknown"
             ):
-                # Just use a generic fallback
                 result = "Unknown Logo"
                 logger.warning(
                     "Vision model failed to identify the logo, using fallback: Unknown Logo"
                 )
 
-            logger.info(f"Analysis result: {result}")
+            logger.info(f"Final analysis result: {result}")
             return result
         except Exception as e:
             logger.error(f"Error analyzing image: {str(e)}")
@@ -156,12 +143,8 @@ def download_image(url: str) -> str:
         }
         response = requests.get(url, headers=headers, stream=True)
         response.raise_for_status()
-
-        # Create a temporary file with .png extension
         fd, temp_path = tempfile.mkstemp(suffix=".png")
         os.close(fd)
-
-        # Write the image to the temporary file
         with open(temp_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
@@ -183,16 +166,12 @@ def image_tool_fn(image_path_or_url: str) -> str:
         Description of the identified logo/content
     """
     try:
-        # Check if the input is a URL
         if image_path_or_url.startswith("http"):
             image_path = download_image(image_path_or_url)
         else:
             image_path = image_path_or_url
-
         analyzer = ImageAnalyzer()
         result = analyzer.analyze(image_path)
-
-        # Clean up temporary file if it was downloaded
         if image_path_or_url.startswith("http") and os.path.exists(image_path):
             try:
                 os.remove(image_path)
@@ -328,13 +307,10 @@ def analyze_logo(image_path: str) -> Dict[str, Any]:
         logger.info(f"Analyzing image: {image_path}")
         result = image_tool_fn(image_path)
         logger.info(f"Detected logo/company: {result}")
-
         query = f"Identify the company shown in the image as '{result}' and give me its details like name, headquarters, website, and what it does."
-
         agent = create_agent()
         logger.info("Running agent to gather company information")
         response = agent.invoke(query)
-
         return {"detected_logo": result, "company_info": response["output"]}
     except Exception as e:
         logger.error(f"Error in analyze_logo: {str(e)}")
@@ -343,7 +319,6 @@ def analyze_logo(image_path: str) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     try:
-        # Parse command-line arguments
         parser = argparse.ArgumentParser(
             description="Multi-Modal Agent for Logo Recognition"
         )
@@ -352,20 +327,14 @@ if __name__ == "__main__":
         group.add_argument("--url", type=str, help="URL of the logo image")
         parser.add_argument("--debug", action="store_true", help="Enable debug output")
         args = parser.parse_args()
-
-        # Set the image path or URL
         image_source = args.url if args.url else args.image
-
         print("🧠 Analyzing image...", image_source)
         result = image_tool_fn(image_source)
         print("✅ Detected logo/company name:", result)
-
         query = f"Identify the company shown in the image as '{result}' and give me its details like name, headquarters, website, and what it does."
-
         agent = create_agent()
         print("\n🌐 Running agent...")
         response = agent.invoke(query)
-
         print("\n🎯 Final Answer:\n", response["output"])
     except Exception as e:
         logger.error(f"Error in main execution: {str(e)}")
