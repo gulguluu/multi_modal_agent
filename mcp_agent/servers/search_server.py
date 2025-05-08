@@ -16,7 +16,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 server = FastMCP("SearchServer", host="0.0.0.0", port=8002)
-# Initialize DuckDuckGo search tool
 search_tool = DuckDuckGoSearchRun()
 
 
@@ -33,7 +32,6 @@ def search_web(query: str) -> str:
     """
     logger.info(f"Searching web for: {query}")
     try:
-        # Use LangChain's DuckDuckGoSearchRun tool
         search_results = search_tool.invoke(query)
         logger.info(f"Search results length: {len(search_results) if search_results else 0}")
         logger.info(f"Search results preview: {search_results[:200] if search_results else 'None'}...")
@@ -56,18 +54,13 @@ def search_recipes(ingredients: str) -> str:
     """
     logger.info(f"Searching for recipes with ingredients: {ingredients}")
 
-    # Process ingredients - handle both JSON and text formats
     try:
-        # If it looks like a JSON array, convert to comma-separated string
         if ingredients.strip().startswith("[") and ingredients.strip().endswith("]"):
             ingredients_list = json.loads(ingredients)
             if isinstance(ingredients_list, list):
                 ingredients = ", ".join(ingredients_list)
     except:
-        # Not valid JSON, clean up the string
         ingredients = ingredients.strip("[]").replace('"', "").replace("'", "")
-
-    # Limit length and check for empty ingredients
     ingredients = ingredients[:200] if len(ingredients) > 200 else ingredients
     if not ingredients or ingredients.lower() in [
         "[]",
@@ -83,15 +76,10 @@ def search_recipes(ingredients: str) -> str:
             }
         )
 
-    # Search for recipes
     query = f"recipes with {ingredients} easy homemade"
     logger.info(f"Recipe search query: {query}")
     search_results = search_web(query)
-    
-    # Log basic info about search results
     logger.info(f"Recipe search results received, length: {len(search_results) if search_results else 0}")
-
-    # Extract recipe names from search results
     recipes = []
     if search_results and len(search_results) > 100:
         for line in search_results.split("\n"):
@@ -100,14 +88,11 @@ def search_recipes(ingredients: str) -> str:
             ):
                 recipes.append(line.strip())
         recipes = recipes[:5] if len(recipes) > 5 else recipes
-
-    # Return formatted results
     result = {
         "ingredients": ingredients,
         "recipes": recipes,
         "full_results": search_results[:1000] if search_results else "",
     }
-    
     return json.dumps(result)
 
 

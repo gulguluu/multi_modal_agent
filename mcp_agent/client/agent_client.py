@@ -109,14 +109,12 @@ class MultiModalAgent:
                     )
                     logger.info(f"Received response from {tool_name}")
                     return result
-
             except (asyncio.TimeoutError, Exception) as e:
                 logger.warning(
                     f"Error with {tool_name} (attempt {attempt+1}/{self.max_retries+1}): {str(e)}"
                 )
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.retry_delay)
-
         logger.error(f"All attempts to call {tool_name} failed")
         return None
 
@@ -131,7 +129,6 @@ class MultiModalAgent:
         result = await self._call_mcp_tool(
             VISION_SERVER_URL, "identify_food_items", {"image_path": image_path}
         )
-
         food_items_text = self._extract_text_from_response(result)
         if food_items_text:
             try:
@@ -140,7 +137,6 @@ class MultiModalAgent:
                     unique_items = sorted(list(set(matches)))
                     food_items_text = json.dumps(unique_items)
                     print("✅ Detected food items")
-
             except Exception as e:
                 logger.warning(f"Error processing food items: {e}")
 
@@ -155,12 +151,10 @@ class MultiModalAgent:
             return (
                 "No recipe suggestions available as no food items could be identified."
             )
-
         # Step 1: Search for recipes with the identified ingredients
         search_result = await self._call_mcp_tool(
             SEARCH_SERVER_URL, "search_recipes", {"ingredients": food_items}
         )
-
         search_result_text = ""
         if search_result:
             try:
@@ -168,10 +162,10 @@ class MultiModalAgent:
                     search_result_text = json.dumps(search_result)
                 else:
                     search_result_text = self._extract_text_from_response(search_result)
+                print("🔍 Found recipe ideas")
             except Exception as e:
                 logger.warning(f"Error processing search results: {e}")
                 search_result_text = str(search_result)
-
         # Step 2: Generate a recipe based on the ingredients and search results
         llm_params = {
             "ingredients": str(food_items),
@@ -186,6 +180,7 @@ class MultiModalAgent:
             LLM_SERVER_URL, "generate_recipe", llm_params
         )
         if recipe_result:
+            print("🍳 Recipe Suggestion:")
             return self._extract_text_from_response(recipe_result)
         return f"Unable to generate recipe suggestions for {food_items}. Please try again with a clearer image."
 
