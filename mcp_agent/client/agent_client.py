@@ -163,7 +163,7 @@ class MultiModalAgent:
         # Call the vision server MCP tool to identify food items
         result = await self._call_mcp_tool(
             VISION_SERVER_URL, 
-            "detect_food_items", 
+            "identify_food_items", 
             {"image": image_b64}
         )
         
